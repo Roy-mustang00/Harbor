@@ -174,8 +174,8 @@ async fn ensure_pip_window(app: &AppHandle) -> Result<(), String> {
             .min_inner_size(240.0, 135.0)
             .resizable(true);
         #[cfg(desktop)]
-        let builder = builder.decorations(false).skip_taskbar(true).always_on_top(true);
-        let builder = builder.shadow(false).visible(false);
+        let builder = builder.decorations(false).skip_taskbar(true).always_on_top(true).shadow(false);
+        let builder = builder.visible(false);
         // transparent() needs macos-private-api, so only Windows sets it here. The mac
         // and GTK render paths make their own webview see-through.
         #[cfg(windows)]
