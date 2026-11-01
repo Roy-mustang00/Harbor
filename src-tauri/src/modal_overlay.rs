@@ -79,8 +79,8 @@ pub async fn modal_overlay_open(
             .position(pos.x, pos.y)
             .resizable(false);
         #[cfg(desktop)]
-        let builder = builder.always_on_top(true).decorations(false).skip_taskbar(true).shadow(false);
-        let builder = builder.visible(true).focused(true);
+        let builder = builder.always_on_top(true).decorations(false).skip_taskbar(true).shadow(false).focused(true);
+        let builder = builder.visible(true);
         let result = crate::browser_args::match_main(&app_clone, builder).build();
         match result {
             Ok(window) => {
