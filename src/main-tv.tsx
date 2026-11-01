@@ -1,12 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { hydrateCustomThemes } from "@/lib/custom-themes";
-import { applyOsDataset } from "@/lib/platform";
+import { onBackButtonPress } from "@tauri-apps/api/app";
+import { applyOsDataset, isAndroid } from "@/lib/platform";
+import { runBpBack } from "@/views/big-picture/bp-back";
 import { getUiLanguage } from "@/lib/i18n/store";
 import { ensureUiLocale } from "@/lib/i18n/load-locale";
 import { loadSecrets } from "@/lib/secret-store";
 import { BpTvApp } from "@/views/big-picture/bp-tv-app";
 import "@/index.css";
+
 
 // The Android TV entry. index.html / main.tsx stay the desktop entry and must
 // never import this file: pulling BpTvApp into that graph changes the desktop
@@ -15,7 +18,21 @@ import "@/index.css";
 // No pip, modal, hdr or remote branch here on purpose. Those are separate
 // desktop windows, and Android has exactly one webview.
 
+
 applyOsDataset();
+
+// Android hardware Back. The stock activity finishes the app on Back because
+// the SPA keeps no page history for the system to consume. The shell already
+// maintains a layered back chain (bp-back.ts) and exposes it for a native
+// bridge; onBackButtonPress is that bridge here. At the root the chain shows
+// the exit confirmation instead of leaving. Desktop and TV keep their own
+// input paths, so this registers on Android only.
+if (isAndroid()) {
+  void onBackButtonPress(() => {
+    runBpBack();
+  }).catch(() => {});
+}
+
 
 // No startup-ready ping here, and that is deliberate. Desktop sets
 // visible:false on its window and reveals it from on_page_load inside the
@@ -24,6 +41,7 @@ applyOsDataset();
 // tauri.android.conf.json replaces the whole windows array and omits the flag.
 // Add visible:false there and the TV stays black forever, because none of the
 // reveal machinery is compiled into the Android binary.
+
 
 async function mount() {
   performance.mark("harbor:mount-start");
@@ -47,5 +65,6 @@ async function mount() {
     .then((m) => m.initSubtitleCache())
     .catch(() => {});
 }
+
 
 void mount();
