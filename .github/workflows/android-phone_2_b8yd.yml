@@ -1,0 +1,227 @@
+name: Android phone APK
+
+# Builds an installable debug APK of Harbor for an arm64 Android phone on GitHub's
+# runners, so no PC is needed. Open the Actions tab, pick "Android phone APK",
+# choose Run workflow, then download the artifact from the finished run.
+#
+# Self-contained: it applies the phone changes itself (landscape canvas in
+# index-tv.html, cleartext loopback config, landscape lock), so it works on an
+# unmodified fork. Each patch step skips itself if the change is already there.
+# Written without being able to run it. The first run may need a fix.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_OPTIONS: --max-old-space-size=6144
+  # The extension compat layer is not in this repository; see app-build.yml.
+  HARBOR_CAPSTAN_OPTIONAL: "1"
+
+jobs:
+  apk:
+    name: Debug APK (arm64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            harbor-core
+            src-tauri
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Locate Android SDK and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          ndk="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-${ANDROID_NDK:-}}}"
+          if [[ -z "$sdk" || ! -d "$sdk" ]]; then
+            echo "No Android SDK found on this runner." >&2
+            exit 1
+          fi
+          if [[ -z "$ndk" || ! -d "$ndk" ]]; then
+            echo "No Android NDK found on this runner. Installed NDKs:" >&2
+            ls "$sdk/ndk" >&2 || true
+            exit 1
+          fi
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          echo "SDK: $sdk"
+          echo "NDK: $ndk"
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply phone canvas to index-tv.html
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/phone-block.txt" <<'BLOCK'
+                    if (!tv) {
+                      // Phone build: an Android touch device that is not a television. It
+                      // gets the same fixed-canvas treatment, landscape only, because the
+                      // activity is locked to landscape by scripts/android-phone-prep.mjs
+                      // and a portrait width of 1280 would shrink everything past reading.
+                      // A phone is also shorter than a 16:9 panel, so the canvas is wider
+                      // than the TV one to leave the rails vertical room. Untested on a
+                      // device; harbor.phoneCanvas in localStorage overrides it for tuning.
+                      if (!/Android/i.test(ua) || !(navigator.maxTouchPoints > 0)) return;
+                      if (window.innerWidth <= window.innerHeight) return;
+                      document.documentElement.setAttribute("data-form-factor", "phone");
+                      var stored = 0;
+                      try {
+                        stored = Number(window.localStorage.getItem("harbor.phoneCanvas")) || 0;
+                      } catch (e) {
+                        /* storage can throw; fall back to the default */
+                      }
+                      var phoneCanvas = stored >= 800 && stored <= 2000 ? stored : 1280;
+                      if (window.innerWidth >= phoneCanvas - 48) return;
+                      var pm = document.querySelector('meta[name="viewport"]');
+                      if (pm) pm.setAttribute("content", "width=" + phoneCanvas + ", viewport-fit=cover");
+                      return;
+                    }
+          BLOCK
+          node - <<'JS'
+          const fs = require("node:fs");
+          const file = "index-tv.html";
+          const html = fs.readFileSync(file, "utf8");
+          if (html.includes("data-form-factor")) {
+            console.log("index-tv.html already has the phone canvas; leaving it alone.");
+            process.exit(0);
+          }
+          const anchor = "          if (!tv) return;\n";
+          const at = html.indexOf(anchor);
+          if (at === -1 || html.indexOf(anchor, at + 1) !== -1) {
+            console.error("Expected exactly one 'if (!tv) return;' in index-tv.html. Upstream changed, so this step cannot patch it.");
+            process.exit(1);
+          }
+          const block = fs.readFileSync(process.env.RUNNER_TEMP + "/phone-block.txt", "utf8");
+          fs.writeFileSync(file, html.slice(0, at) + block + html.slice(at + anchor.length));
+          console.log("Patched index-tv.html");
+          JS
+
+      - name: Add phone prep script
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p scripts
+          cat > scripts/android-phone-prep.mjs <<'MJS'
+          // Prepares the Tauri-generated Android project for installing Harbor on a phone.
+          //
+          // Run once after `pnpm android:init`, and again after anything regenerates
+          // src-tauri/gen/android. It is idempotent. It does two things the generated
+          // project cannot do for itself:
+          //
+          //   1. Installs docs/android/network_security_config.xml and points the manifest
+          //      at it, so the release APK may reach the on-device torrent engine over
+          //      cleartext loopback (see the comment at the top of that file).
+          //   2. Locks the main activity to landscape, which the phone canvas in
+          //      index-tv.html assumes.
+          //
+          // Usage: node scripts/android-phone-prep.mjs [path/to/app/src/main]
+
+          import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+          import { dirname, join, resolve } from "node:path";
+          import { fileURLToPath } from "node:url";
+
+          const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+          const main = process.argv[2]
+            ? resolve(process.argv[2])
+            : join(root, "src-tauri", "gen", "android", "app", "src", "main");
+          const manifestPath = join(main, "AndroidManifest.xml");
+          const configSource = join(root, "docs", "android", "network_security_config.xml");
+          const configTarget = join(main, "res", "xml", "network_security_config.xml");
+
+          const NSC_ATTR = 'android:networkSecurityConfig="@xml/network_security_config"';
+          const ORIENTATION_ATTR = 'android:screenOrientation="sensorLandscape"';
+
+          function fail(message) {
+            console.error(`android-phone-prep: ${message}`);
+            process.exit(1);
+          }
+
+          if (!existsSync(manifestPath)) {
+            fail(`${manifestPath} not found. Run "pnpm android:init" first.`);
+          }
+          if (!existsSync(configSource)) {
+            fail(`${configSource} not found.`);
+          }
+
+          let manifest = readFileSync(manifestPath, "utf8");
+          const changes = [];
+
+          if (!/android:networkSecurityConfig=/.test(manifest)) {
+            if (!/<application\b/.test(manifest)) fail("no <application> tag in the manifest.");
+            manifest = manifest.replace(/<application\b/, `<application\n        ${NSC_ATTR}`);
+            changes.push("added networkSecurityConfig to <application>");
+          }
+
+          const activity = [...manifest.matchAll(/<activity\b[^>]*>/g)].find((m) =>
+            /android:name="[^"]*MainActivity"/.test(m[0]),
+          );
+          if (!activity) fail("no MainActivity <activity> tag in the manifest.");
+          if (!activity[0].includes(ORIENTATION_ATTR)) {
+            const patched = /android:screenOrientation=/.test(activity[0])
+              ? activity[0].replace(/android:screenOrientation="[^"]*"/, ORIENTATION_ATTR)
+              : activity[0].replace(/<activity\b/, `<activity\n            ${ORIENTATION_ATTR}`);
+            manifest = manifest.replace(activity[0], patched);
+            changes.push("locked MainActivity to landscape");
+          }
+
+          mkdirSync(dirname(configTarget), { recursive: true });
+          copyFileSync(configSource, configTarget);
+          changes.push("installed network_security_config.xml");
+
+          writeFileSync(manifestPath, manifest);
+          console.log(`android-phone-prep: ${changes.join("; ")}`);
+          MJS
+
+      - name: Generate Android project
+        run: pnpm tauri android init --ci
+
+      - name: Prepare Android project for a phone
+        run: node scripts/android-phone-prep.mjs
+
+      - name: Build debug APK
+        run: pnpm tauri android build --apk --debug --target aarch64
+
+      - name: List APKs
+        if: always()
+        shell: bash
+        run: find src-tauri/gen/android/app/build/outputs -name '*.apk' -print 2>/dev/null || true
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: harbor-phone-debug-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 7
