@@ -37,6 +37,13 @@
             /Android ?TV|Google ?TV|SMART-?TV|Tizen|Web ?0S|WebOS|NetCast|BRAVIA|HbbTV|CrKey|VIDAA/i.test(
               ua,
             );
+          // A phone is not a television: hand it the touch shell before the
+          // canvas below can lay Big Picture over it. Televisions keep the
+          // canvas path untouched, and ?tv=1 forces it for debugging.
+          if (!tv && /Android/i.test(ua) && !/[?&]tv=1\b/.test(location.search)) {
+            location.replace("index-phone.html" + location.search + location.hash);
+            return;
+          }
           if (!tv) return;
           if (Math.abs(CANVAS - window.innerWidth) < 48) return;
           var m = document.querySelector('meta[name="viewport"]');
