@@ -44,6 +44,13 @@ export function BpOnboardField({
   // writable input throws the system IME over the whole screen before the user
   // has asked for anything. Held readOnly until OK, so the keyboard is a choice.
   const locked = isAndroid() && !armed;
+  // Arming is what Enter does on a remote; a touch tap must do the same, or a
+  // phone user can focus the field yet never get a keyboard (tap fires no Enter).
+  const arm = () => {
+    if (!locked) return;
+    setArmed(true);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
 
   const t = useBpT();
   const masked = !!secret && !revealed;
@@ -55,6 +62,7 @@ export function BpOnboardField({
             {label}
           </span>
           <span
+            onClick={arm}
             className={`flex h-[clamp(54px,6.4vh,80px)] items-center rounded-[var(--bp-r-md)] border bg-[var(--bp-panel)] px-[clamp(16px,1.4vw,28px)] ${
               active ? "border-[var(--bp-focus-stroke)]" : "border-[var(--bp-edge-2)]"
             }`}
@@ -63,6 +71,7 @@ export function BpOnboardField({
               data-bp-focusable
               data-tv-text-auto
               ref={inputRef}
+              onClick={arm}
               readOnly={locked}
               inputMode={locked ? "none" : undefined}
               type={masked ? "password" : "text"}
@@ -76,8 +85,7 @@ export function BpOnboardField({
                 if (e.key !== "Enter") return;
                 e.stopPropagation();
                 if (locked) {
-                  setArmed(true);
-                  requestAnimationFrame(() => inputRef.current?.focus());
+                  arm();
                   return;
                 }
                 if (!onSubmit) return;
