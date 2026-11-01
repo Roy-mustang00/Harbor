@@ -211,9 +211,9 @@ jobs:
         run: node scripts/android-phone-prep.mjs
 
       - name: Build debug APK
-      env:
-        CFLAGS_aarch64_linux_android: "-Dlutimes=utimes"
-        CXXFLAGS_aarch64_linux_android: "-Dlutimes=utimes"
+        env:
+          CFLAGS_aarch64_linux_android: "-Dlutimes=utimes"
+          CXXFLAGS_aarch64_linux_android: "-Dlutimes=utimes"
         run: pnpm tauri android build --apk --debug --target aarch64
 
       - name: List APKs
