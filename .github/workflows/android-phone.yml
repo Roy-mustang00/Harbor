@@ -148,7 +148,7 @@ jobs:
           //
           // Usage: node scripts/android-phone-prep.mjs [path/to/app/src/main]
 
-          import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+          import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
           import { dirname, join, resolve } from "node:path";
           import { fileURLToPath } from "node:url";
 
@@ -161,7 +161,7 @@ jobs:
           const configTarget = join(main, "res", "xml", "network_security_config.xml");
 
           const NSC_ATTR = 'android:networkSecurityConfig="@xml/network_security_config"';
-          const ORIENTATION_ATTR = 'android:screenOrientation="sensorLandscape"';
+          const ORIENTATION_ATTR = 'android:screenOrientation="unspecified"';
 
           function fail(message) {
             console.error(`android-phone-prep: ${message}`);
@@ -193,12 +193,18 @@ jobs:
               ? activity[0].replace(/android:screenOrientation="[^"]*"/, ORIENTATION_ATTR)
               : activity[0].replace(/<activity\b/, `<activity\n            ${ORIENTATION_ATTR}`);
             manifest = manifest.replace(activity[0], patched);
-            changes.push("locked MainActivity to landscape");
+            changes.push("set MainActivity orientation to unspecified");
           }
 
           mkdirSync(dirname(configTarget), { recursive: true });
           copyFileSync(configSource, configTarget);
           changes.push("installed network_security_config.xml");
+
+          const iconsSource = join(root, "src-tauri", "icons", "android");
+          if (existsSync(iconsSource)) {
+            cpSync(iconsSource, join(main, "res"), { recursive: true });
+            changes.push("installed official Android launcher icons");
+          }
 
           writeFileSync(manifestPath, manifest);
           console.log(`android-phone-prep: ${changes.join("; ")}`);
