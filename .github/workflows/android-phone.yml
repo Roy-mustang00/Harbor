@@ -87,14 +87,32 @@ jobs:
           cat > "$RUNNER_TEMP/phone-block.txt" <<'BLOCK'
                     if (!tv) {
                       // Phone build: an Android touch device that is not a television. It
-                      // gets the same fixed-canvas treatment, landscape only, because the
-                      // activity is locked to landscape by scripts/android-phone-prep.mjs
-                      // and a portrait width of 1280 would shrink everything past reading.
-                      // A phone is also shorter than a 16:9 panel, so the canvas is wider
-                      // than the TV one to leave the rails vertical room. Untested on a
-                      // device; harbor.phoneCanvas in localStorage overrides it for tuning.
+                      // gets the same fixed-canvas treatment, in both orientations: the
+                      // activity is no longer locked to landscape, so portrait boots on
+                      // its own narrower canvas (branch below) instead of overflowing
+                      // at raw device width. A phone in landscape is also shorter than
+                      // a 16:9 panel, so its canvas is wider than the TV one to leave
+                      // the rails vertical room. harbor.phoneCanvas and
+                      // harbor.phoneCanvasPortrait in localStorage override for tuning.
                       if (!/Android/i.test(ua) || !(navigator.maxTouchPoints > 0)) return;
-                      if (window.innerWidth <= window.innerHeight) return;
+                      if (window.innerWidth <= window.innerHeight) {
+                        // Portrait boot: at raw device width the TV layout overflows
+                        // and clips, and forms cannot be filled. Lay out on a wider
+                        // portrait canvas so the whole interface fits, scaled down.
+                        document.documentElement.setAttribute("data-form-factor", "phone");
+                        var storedP = 0;
+                        try {
+                          storedP = Number(window.localStorage.getItem("harbor.phoneCanvasPortrait")) || 0;
+                        } catch (e) {
+                          /* storage can throw; fall back to the default */
+                        }
+                        var portraitCanvas = storedP >= 560 && storedP <= 1200 ? storedP : 800;
+                        if (window.innerWidth < portraitCanvas - 48) {
+                          var pmP = document.querySelector('meta[name="viewport"]');
+                          if (pmP) pmP.setAttribute("content", "width=" + portraitCanvas + ", viewport-fit=cover");
+                        }
+                        return;
+                      }
                       document.documentElement.setAttribute("data-form-factor", "phone");
                       var stored = 0;
                       try {
