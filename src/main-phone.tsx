@@ -27,6 +27,30 @@ import "flag-icons/css/flag-icons.min.css";
 // this slice; it finds no host on-device and stays inert while the browse,
 // search and detail screens read the local data libraries.
 
+// index-phone.html inherits the desktop page's boot contract: #root starts
+// inert + data-startup-hidden behind the opaque #harbor-boot splash, and only
+// the entry can lift it (main.tsx does so from App's onReady chain, which this
+// entry does not have). Without these two helpers the shell mounts invisibly
+// behind a splash that nothing ever dismisses — the phone build's first boot
+// hung on the sail for exactly this reason.
+function revealRoot() {
+  const root = document.getElementById("root");
+  if (root instanceof HTMLElement) {
+    root.removeAttribute("data-startup-hidden");
+    root.inert = false;
+  }
+}
+
+function dismissBootSplash() {
+  revealRoot();
+  const boot = document.getElementById("harbor-boot");
+  if (boot) {
+    boot.classList.add("gone");
+    window.setTimeout(() => boot.remove(), 280);
+  }
+  document.getElementById("harbor-boot-chrome")?.remove();
+}
+
 applyOsDataset();
 
 // Android hardware Back, same bridge as the TV entry: the SPA keeps no page
@@ -61,6 +85,8 @@ async function mount() {
     </StrictMode>,
   );
   performance.mark("harbor:render-called");
+  // First frame handed to React: lift the boot cover (see the helpers above).
+  requestAnimationFrame(() => requestAnimationFrame(dismissBootSplash));
   // Deferred for the same reason as the TV entry: nothing reads the subtitle
   // cache until a stream plays, so it must not sit in front of first paint.
   void import("@/lib/subtitles/subtitle-cache")
@@ -68,4 +94,20 @@ async function mount() {
     .catch(() => {});
 }
 
-void mount();
+// Failsafe: if a pre-render await ever hangs on-device, lift the boot cover
+// rather than stranding the user on the splash forever. Fires long after any
+// healthy boot (which removes #harbor-boot within the first frames), so on a
+// good boot it is a no-op.
+window.setTimeout(() => {
+  if (document.getElementById("harbor-boot")) {
+    console.error("[harbor] phone startup timed out; revealing root");
+    dismissBootSplash();
+  }
+}, 15000);
+
+void mount().catch((err) => {
+  // Never strand the user on the splash: log the failure where it can be
+  // seen and lift the cover so whatever did mount stays reachable.
+  console.error("[harbor] phone startup failed", err);
+  dismissBootSplash();
+});
