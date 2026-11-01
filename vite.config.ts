@@ -83,7 +83,7 @@ export default defineConfig(({ mode }) => {
       ? {
           build: {
             target: "chrome87",
-            rollupOptions: { input: { tv: "index-tv.html", main: "index.html" } },
+            rollupOptions: { input: { tv: "index-tv.html", main: "index.html", phone: "index-phone.html" } },
           },
         }
       : {
