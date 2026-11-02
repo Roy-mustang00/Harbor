@@ -9,6 +9,7 @@ import { resolveTrailerId } from "@/lib/trailer";
 import { useSettings } from "@/lib/settings";
 import { useT } from "@/lib/i18n";
 import { useMobileRemote } from "../mobile-remote";
+import { isPhoneBackActive, pushPhoneBack } from "../phone-back";
 import { HIDE_SCROLL, prefersReducedMotion } from "./data";
 import { MobileTrailerOverlay } from "./trailer";
 import { Group, SheetRow } from "./sheet-ui";
@@ -32,6 +33,26 @@ export function DetailActions({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [trailerOpen, setTrailerOpen] = useState(false);
   const [trailer, setTrailer] = useState<string | null>(trailerId);
+
+  // Android hardware Back (standalone phone entry only): while either layer
+  // is up it sits above the detail sheet in the phone-back stack, so Back
+  // closes the trailer first, then the actions sheet, and only reaches the
+  // detail sheet once both are gone. Inert in the web habitat.
+  useEffect(() => {
+    if (!isPhoneBackActive()) return;
+    if (trailerOpen) {
+      return pushPhoneBack(() => {
+        setTrailerOpen(false);
+        return true;
+      });
+    }
+    if (sheetOpen) {
+      return pushPhoneBack(() => {
+        setSheetOpen(false);
+        return true;
+      });
+    }
+  }, [sheetOpen, trailerOpen]);
 
   useEffect(() => {
     setTrailer(trailerId);
