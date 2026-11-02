@@ -41,9 +41,12 @@ const TAB_BAR_SLIDE_CSS = `
 export function BottomTabBar({
   active,
   onSelect,
+  standalone = false,
 }: {
   active: MobileTab;
   onSelect: (tab: MobileTab) => void;
+  /** Standalone phone app: there is no host to remote-control, so no Remote tab. */
+  standalone?: boolean;
 }) {
   const translate = useT();
   const { snapshot } = useMobileRemote();
@@ -52,6 +55,7 @@ export function BottomTabBar({
   const avatar = snapshot.profile?.avatar ?? activeProfile?.avatar ?? null;
   const color = snapshot.profile?.color ?? activeProfile?.color ?? "oklch(0.78 0.13 60)";
   const pname = snapshot.profile?.name ?? activeProfile?.name ?? "";
+  const tabs = standalone ? TABS.filter((t) => t.id !== "remote") : TABS;
 
   return (
     <nav
@@ -61,7 +65,7 @@ export function BottomTabBar({
     >
       <style>{TAB_BAR_SLIDE_CSS}</style>
       <div className="pointer-events-auto flex w-[min(400px,100%)] items-center justify-between rounded-xl border border-edge-soft/60 bg-elevated/80 px-2 py-2 shadow-[0_12px_34px_-10px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const on = t.id === active;
           const Icon = t.icon;
           return (
