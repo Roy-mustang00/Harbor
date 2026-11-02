@@ -11,7 +11,7 @@ import { SearchProvider } from "@/lib/search-context";
 import { loadSecrets } from "@/lib/secret-store";
 import { SettingsProvider } from "@/lib/settings";
 import { MobileShell } from "@/views/mobile/mobile-shell";
-import { runPhoneBack } from "@/views/mobile/phone-back";
+import { activatePhoneBack, runPhoneBack } from "@/views/mobile/phone-back";
 import "@/index.css";
 import "flag-icons/css/flag-icons.min.css";
 
@@ -23,9 +23,10 @@ import "flag-icons/css/flag-icons.min.css";
 //
 // The provider stack is only what the mobile subtree actually consumes
 // (settings, profiles, auth, search), in the same relative order App.tsx
-// nests them. The shell's remote provider still mounts inside MobileShell in
-// this slice; it finds no host on-device and stays inert while the browse,
-// search and detail screens read the local data libraries.
+// nests them. MobileShell mounts standalone here: its local provider
+// (local-remote.tsx) replaces the WebSocket remote provider — library
+// actions and profile switches execute on-device, and the browse, search
+// and detail screens read the local data libraries as they always have.
 
 // index-phone.html inherits the desktop page's boot contract: #root starts
 // inert + data-startup-hidden behind the opaque #harbor-boot splash, and only
@@ -53,6 +54,11 @@ function dismissBootSplash() {
 
 applyOsDataset();
 
+// Arm the phone-back chain before anything mounts: shell layers gate their
+// handler registration on this, and it is what claims __harborBack for this
+// entry (the module stays inert when merely imported by shared shell code).
+activatePhoneBack();
+
 // Android hardware Back, same bridge as the TV entry: the SPA keeps no page
 // history for the system to consume, so the stock activity would finish the
 // app on the first press. Layers of the phone shell register with
@@ -77,7 +83,7 @@ async function mount() {
         <ProfilesProvider>
           <AuthProvider>
             <SearchProvider>
-              <MobileShell />
+              <MobileShell standalone />
             </SearchProvider>
           </AuthProvider>
         </ProfilesProvider>
