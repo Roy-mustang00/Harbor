@@ -32,7 +32,7 @@ const VIEW_TRANSITION_CSS = `
 }
 `;
 
-export function MobileBrowse() {
+export function MobileBrowse({ standalone = false }: { standalone?: boolean }) {
   const [view, setView] = useState<View>("home");
   const [seen, setSeen] = useState<Set<View>>(() => new Set<View>(["home"]));
 
@@ -85,7 +85,8 @@ export function MobileBrowse() {
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)" }}
       >
         <div className="pointer-events-auto min-w-0">
-          <MobileDeviceSwitcher />
+          {/* Standalone: the device switcher picks a host to control; on-device there is none. */}
+          {!standalone && <MobileDeviceSwitcher />}
         </div>
         <div className="pointer-events-auto">
           <MobileViewSwitcher view={view} onSelect={selectView} />
