@@ -1,7 +1,9 @@
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { isMangaReaderRoute } from "@/lib/platform";
 import { isSetupRoute } from "@/lib/platform";
+import { useT } from "@/lib/i18n";
+import { close as closeAppWindow } from "@/lib/window";
 import { hasSetupToken } from "./onboard/setup-wire";
 import { HarborLoader } from "@/components/harbor-loader";
 import { MobileBrowse } from "./mobile-browse";
@@ -11,6 +13,8 @@ import { MobileLibrary } from "./mobile-library";
 import { DpadRemote } from "./dpad-remote";
 import { BottomTabBar, type MobileTab } from "./bottom-tab-bar";
 import { MobileRemoteProvider, useMobileRemote } from "./mobile-remote";
+import { LocalMobileRemoteProvider } from "./local-remote";
+import { pushPhoneBack } from "./phone-back";
 import { SheetLockProvider, useSheetLock } from "./mobile-sheet-lock";
 import { useMobileRemoteStyle } from "./remote-style";
 import { ScrollToTop } from "./scroll-to-top";
@@ -21,7 +25,7 @@ const MangaRemote = lazy(() => import("./manga-remote/manga-remote").then((m) =>
 const MangaLocalReader = lazy(() => import("./manga-read/manga-local-reader").then((m) => ({ default: m.MangaLocalReader })));
 const MobileOnboard = lazy(() => import("./onboard").then((m) => ({ default: m.MobileOnboard })));
 
-export function MobileShell() {
+export function MobileShell({ standalone = false }: { standalone?: boolean }) {
   // Held in state rather than re-read per render. Leaving setup strips the
   // query parameter, and a page that decided what to render straight from the
   // URL would have no way to tell "user finished" from "URL still says setup".
@@ -29,8 +33,13 @@ export function MobileShell() {
   // still honoured so an already-issued QR keeps working, but the path is what
   // decides, so onboarding can never take over the remote again.
   const [setup, setSetup] = useState(() => isSetupRoute() || hasSetupToken());
+  // Standalone = the on-device phone app (main-phone.tsx): no host exists, so
+  // the local provider replaces the WebSocket one and the remote-only chrome
+  // (Remote tab, device switcher, remote-style picker) is trimmed. The web
+  // habitat (App.tsx) never passes it and keeps the exact current behaviour.
+  const Provider = standalone ? LocalMobileRemoteProvider : MobileRemoteProvider;
   return (
-    <MobileRemoteProvider>
+    <Provider>
       <SheetLockProvider>
         {setup ? (
           <Suspense fallback={<HarborLoader />}>
@@ -39,10 +48,10 @@ export function MobileShell() {
         ) : isMangaReaderRoute() ? (
           <MangaReaderShell />
         ) : (
-          <ShellBody />
+          <ShellBody standalone={standalone} />
         )}
       </SheetLockProvider>
-    </MobileRemoteProvider>
+    </Provider>
   );
 }
 
@@ -61,9 +70,11 @@ function MangaReaderShell() {
   );
 }
 
-function ShellBody() {
+function ShellBody({ standalone = false }: { standalone?: boolean }) {
+  const t = useT();
   const [tab, setTab] = useState<MobileTab>("home");
   const [seen, setSeen] = useState<Set<MobileTab>>(() => new Set<MobileTab>(["home"]));
+  const [confirmExit, setConfirmExit] = useState(false);
   const showNowPlaying = tab !== "remote";
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -71,6 +82,31 @@ function ShellBody() {
     setTab(next);
     setSeen((prev) => (prev.has(next) ? prev : new Set(prev).add(next)));
   };
+
+  // Standalone shell fallback for Android's hardware Back, mirroring the
+  // Big Picture shell's: registered once, read through a ref, so it stays at
+  // the bottom of the phone-back stack and every layer above it (detail
+  // sheet, dialogs) gets the press first. Back walks home before it asks
+  // about leaving; the exit confirm itself swallows one press to dismiss.
+  const backFallback = useCallback((): boolean => {
+    if (confirmExit) {
+      setConfirmExit(false);
+      return true;
+    }
+    if (tab !== "home") {
+      setTab("home");
+      setSeen((prev) => (prev.has("home") ? prev : new Set(prev).add("home")));
+      return true;
+    }
+    setConfirmExit(true);
+    return true;
+  }, [confirmExit, tab]);
+  const backFallbackRef = useRef(backFallback);
+  backFallbackRef.current = backFallback;
+  useEffect(() => {
+    if (!standalone) return;
+    return pushPhoneBack(() => backFallbackRef.current());
+  }, [standalone]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -91,7 +127,7 @@ function ShellBody() {
       <style>{TAB_TRANSITION_CSS}</style>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <TabLayer active={tab === "home"}>
-          {seen.has("home") && <MobileBrowse />}
+          {seen.has("home") && <MobileBrowse standalone={standalone} />}
         </TabLayer>
         <TabLayer active={tab === "search"}>
           {seen.has("search") && (
@@ -103,7 +139,7 @@ function ShellBody() {
         <TabLayer active={tab === "profile"}>
           {seen.has("profile") && (
             <BrowseScroll>
-              <MobileProfile onOpenRemote={() => selectTab("remote")} />
+              <MobileProfile onOpenRemote={() => selectTab("remote")} standalone={standalone} />
             </BrowseScroll>
           )}
         </TabLayer>
@@ -114,10 +150,50 @@ function ShellBody() {
             </BrowseScroll>
           )}
         </TabLayer>
-        <TabLayer active={tab === "remote"}>{seen.has("remote") && <RemoteSurface />}</TabLayer>
+        {!standalone && (
+          <TabLayer active={tab === "remote"}>{seen.has("remote") && <RemoteSurface />}</TabLayer>
+        )}
       </div>
-      {showNowPlaying && <NowPlayingBar onExpand={() => selectTab("remote")} />}
-      <BottomTabBar active={tab} onSelect={selectTab} />
+      {showNowPlaying && (
+        <NowPlayingBar
+          onExpand={() => {
+            if (!standalone) selectTab("remote");
+          }}
+        />
+      )}
+      <BottomTabBar active={tab} onSelect={selectTab} standalone={standalone} />
+      {standalone && confirmExit && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 px-4"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("Exit Harbor?")}
+        >
+          <div className="flex w-[min(400px,100%)] flex-col gap-1 rounded-3xl bg-canvas p-4 shadow-[0_18px_44px_-12px_rgba(0,0,0,0.65)]">
+            <p className="px-2 pb-2 pt-1 text-center text-[16px] font-semibold text-ink">
+              {t("Exit Harbor?")}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmExit(false);
+                closeAppWindow();
+              }}
+              className="flex h-12 w-full items-center justify-center rounded-full bg-ink text-[15px] font-semibold text-canvas transition-transform active:scale-[0.98]"
+            >
+              {t("Exit")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmExit(false)}
+              className="flex h-12 w-full items-center justify-center rounded-full border border-edge-soft bg-surface text-[15px] font-semibold text-ink transition-transform active:scale-[0.98]"
+            >
+              {t("Cancel")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
