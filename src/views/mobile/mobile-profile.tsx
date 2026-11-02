@@ -5,9 +5,10 @@ import {
   HelpCircle,
   LogOut,
   MonitorSmartphone,
+  Settings,
   Users,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Suspense, lazy, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { useProfiles } from "@/lib/profiles";
 import { useT } from "@/lib/i18n";
@@ -17,7 +18,22 @@ import { setMobileRemoteStyle, useMobileRemoteStyle, type MobileRemoteStyle } fr
 import { HARBOR_BUGS_BASE } from "@/lib/config/endpoints";
 import { openUrl } from "@/lib/window";
 
-export function MobileProfile({ onOpenRemote }: { onOpenRemote: () => void }) {
+// Lazy on purpose: the settings screen's graph (BP settings catalog, addon
+// store, downloads store, torrent engine client) loads only when a
+// standalone user first opens it — the shell's boot graph and the
+// web-remote bundle stay exactly as they were.
+const PhoneSettings = lazy(() =>
+  import("./phone-settings").then((m) => ({ default: m.PhoneSettings })),
+);
+
+export function MobileProfile({
+  onOpenRemote,
+  standalone = false,
+}: {
+  onOpenRemote: () => void;
+  /** Standalone phone app: no host, so no remote-style picker or Remote row. */
+  standalone?: boolean;
+}) {
   const t = useT();
   const { user, signOut } = useAuth();
   const { activeProfile } = useProfiles();
@@ -27,6 +43,7 @@ export function MobileProfile({ onOpenRemote }: { onOpenRemote: () => void }) {
   const avatar = remote?.avatar ?? activeProfile?.avatar ?? null;
   const color = remote?.color ?? activeProfile?.color ?? "oklch(0.78 0.13 60)";
   const [switching, setSwitching] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <div className="flex h-full flex-col gap-6 px-5 pt-4">
@@ -56,23 +73,39 @@ export function MobileProfile({ onOpenRemote }: { onOpenRemote: () => void }) {
         </span>
       </button>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="px-1 text-[12px] font-bold uppercase tracking-[0.16em] text-ink-subtle">
-          {t("Remote style")}
-        </h2>
-        <div className="grid grid-cols-2 gap-3">
-          <StylePreview kind="dpad" label={t("D-pad")} />
-          <StylePreview kind="minimal" label={t("Touchpad")} />
-        </div>
-      </section>
+      {!standalone && (
+        <section className="flex flex-col gap-3">
+          <h2 className="px-1 text-[12px] font-bold uppercase tracking-[0.16em] text-ink-subtle">
+            {t("Remote style")}
+          </h2>
+          <div className="grid grid-cols-2 gap-3">
+            <StylePreview kind="dpad" label={t("D-pad")} />
+            <StylePreview kind="minimal" label={t("Touchpad")} />
+          </div>
+        </section>
+      )}
 
       <section className="overflow-hidden rounded-2xl border border-edge-soft/70 bg-elevated/40">
-        <Row
-          icon={<MonitorSmartphone size={20} strokeWidth={2} />}
-          label={t("Remote")}
-          onClick={onOpenRemote}
-        />
-        <Divider />
+        {standalone && (
+          <>
+            <Row
+              icon={<Settings size={20} strokeWidth={2} />}
+              label={t("Settings")}
+              onClick={() => setSettingsOpen(true)}
+            />
+            <Divider />
+          </>
+        )}
+        {!standalone && (
+          <>
+            <Row
+              icon={<MonitorSmartphone size={20} strokeWidth={2} />}
+              label={t("Remote")}
+              onClick={onOpenRemote}
+            />
+            <Divider />
+          </>
+        )}
         <Row
           icon={<HelpCircle size={20} strokeWidth={2} />}
           label={t("Help & feedback")}
@@ -94,6 +127,11 @@ export function MobileProfile({ onOpenRemote }: { onOpenRemote: () => void }) {
       </section>
 
       {switching && <MobileWhosWatching onClose={() => setSwitching(false)} />}
+      {standalone && settingsOpen && (
+        <Suspense fallback={null}>
+          <PhoneSettings onClose={() => setSettingsOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
