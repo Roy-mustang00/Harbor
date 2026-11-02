@@ -7,6 +7,7 @@ import { useSettings } from "@/lib/settings";
 import { useT } from "@/lib/i18n";
 import { useHideAnimeMetas } from "@/lib/anime-hide";
 import { useMobileRemote } from "../mobile-remote";
+import { isPhoneBackActive, pushPhoneBack } from "../phone-back";
 import {
   DETAIL_CSS,
   firstEpisode,
@@ -67,6 +68,21 @@ export function MobileDetail({ meta, onClose }: { meta: Meta; onClose: () => voi
     if (stack.length > 1) setStack((s) => s.slice(0, -1));
     else close();
   }, [stack.length, close]);
+
+  // Android hardware Back (standalone phone entry only): one registration
+  // for the sheet's lifetime, always invoking the latest back() — pop the
+  // stacked meta if there is one, otherwise close the sheet. Registered
+  // after the shell's fallback, so LIFO order gives this sheet the press
+  // before the shell sees it. Inert in the web habitat (never activated).
+  const backRef = useRef(back);
+  backRef.current = back;
+  useEffect(() => {
+    if (!isPhoneBackActive()) return;
+    return pushPhoneBack(() => {
+      backRef.current();
+      return true;
+    });
+  }, []);
 
   const openMeta = useCallback((m: Meta) => {
     setStack((s) => (s[s.length - 1]?.id === m.id ? s : [...s, m]));
