@@ -16,7 +16,7 @@ import { useSettings } from "@/lib/settings";
 
 type PlayOpts = { season?: number; episode?: number; resume?: boolean };
 
-type MobileRemoteValue = {
+export type MobileRemoteValue = {
   connected: boolean;
   snapshot: RemoteSnapshot;
   playOnHost: (meta: Meta, opts?: PlayOpts) => void;
@@ -24,7 +24,10 @@ type MobileRemoteValue = {
   sendCommand: (command: RemoteCommand) => boolean;
 };
 
-const Ctx = createContext<MobileRemoteValue | null>(null);
+// Exported so the standalone phone shell's local provider
+// (local-remote.tsx) can serve the same context without a WebSocket host.
+// useMobileRemote() below is the only consumer-facing hook either way.
+export const MobileRemoteContext = createContext<MobileRemoteValue | null>(null);
 
 export function MobileRemoteProvider({ children }: { children: ReactNode }) {
   const { status, snapshot, sendCommand } = useRemoteClient();
@@ -121,7 +124,7 @@ export function MobileRemoteProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <Ctx.Provider value={value}>
+    <MobileRemoteContext.Provider value={value}>
       {children}
       {flash && (
         <div
@@ -142,12 +145,12 @@ export function MobileRemoteProvider({ children }: { children: ReactNode }) {
           </div>
         </div>
       )}
-    </Ctx.Provider>
+    </MobileRemoteContext.Provider>
   );
 }
 
 export function useMobileRemote(): MobileRemoteValue {
-  const v = useContext(Ctx);
+  const v = useContext(MobileRemoteContext);
   if (!v) throw new Error("useMobileRemote must be used within MobileRemoteProvider");
   return v;
 }
