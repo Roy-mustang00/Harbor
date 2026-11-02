@@ -8,6 +8,26 @@ const handlers: PhoneBackHandler[] = [];
 // stack from the top and stops at the first handler that consumes it. A
 // handler that returns false is skipped, so a layer can decline (e.g. a sheet
 // that is already closing) without eating the press.
+//
+// The chain is inert until the phone entry activates it. Shell components are
+// shared with the web-remote habitat (App.tsx), where nothing may register:
+// an always-on registration there would stack handlers nobody calls and this
+// module would claim the shared __harborBack global that bp-back.ts owns in
+// the desktop/TV bundles. main-phone.tsx calls activatePhoneBack() at boot;
+// layers gate their registration on isPhoneBackActive().
+let active = false;
+
+export function activatePhoneBack(): void {
+  active = true;
+  if (typeof window !== "undefined") {
+    (window as unknown as { __harborBack?: () => boolean }).__harborBack = runPhoneBack;
+  }
+}
+
+export function isPhoneBackActive(): boolean {
+  return active;
+}
+
 export function pushPhoneBack(fn: PhoneBackHandler): () => void {
   handlers.push(fn);
   return () => {
@@ -21,8 +41,4 @@ export function runPhoneBack(): boolean {
     if (handlers[i]()) return true;
   }
   return false;
-}
-
-if (typeof window !== "undefined") {
-  (window as unknown as { __harborBack?: () => boolean }).__harborBack = runPhoneBack;
 }
