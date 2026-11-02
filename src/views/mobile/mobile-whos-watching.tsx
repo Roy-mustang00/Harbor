@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { RemoteProfile } from "@/lib/remote/protocol";
 import { useT } from "@/lib/i18n";
 import { useMobileRemote } from "./mobile-remote";
+import { isPhoneBackActive, pushPhoneBack } from "./phone-back";
 
 type TileState = "idle" | "chosen" | "dimmed";
 
@@ -39,6 +40,19 @@ export function MobileWhosWatching({ onClose }: { onClose: () => void }) {
   const timers = useRef<number[]>([]);
 
   useEffect(() => () => timers.current.forEach((id) => window.clearTimeout(id)), []);
+
+  // Android hardware Back (standalone phone entry only): this switcher is a
+  // full-screen dialog, so Back dismisses it like its close button. Inert in
+  // the web habitat.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!isPhoneBackActive()) return;
+    return pushPhoneBack(() => {
+      onCloseRef.current();
+      return true;
+    });
+  }, []);
 
   const choose = (id: string) => {
     if (selectingId) return;
