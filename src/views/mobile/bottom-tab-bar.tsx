@@ -61,7 +61,10 @@ export function BottomTabBar({
     <nav
       className="harbor-tabbar-slide pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4"
       data-hidden={sheetOpen ? "true" : undefined}
-      style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 10px)" }}
+      style={{
+        paddingBottom:
+          "calc(var(--harbor-safe-bottom, env(safe-area-inset-bottom, 0px)) + 10px)",
+      }}
     >
       <style>{TAB_BAR_SLIDE_CSS}</style>
       <div className="pointer-events-auto flex w-[min(400px,100%)] items-center justify-between rounded-xl border border-edge-soft/60 bg-elevated/80 px-2 py-2 shadow-[0_12px_34px_-10px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
@@ -78,7 +81,7 @@ export function BottomTabBar({
               className="flex flex-1 items-center justify-center"
             >
               <span
-                className={`flex h-10 w-[52px] items-center justify-center rounded-[13px] transition-[background-color,transform] duration-200 active:scale-95 ${
+                className={`flex h-12 w-[52px] items-center justify-center rounded-[13px] transition-[background-color,transform] duration-200 active:scale-95 ${
                   on ? "bg-ink" : "bg-transparent"
                 }`}
               >
