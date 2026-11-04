@@ -93,7 +93,9 @@ export function MobileLibrary() {
   return (
     <div
       className="flex flex-col gap-6 px-5"
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 14px)" }}
+      style={{
+        paddingTop: "calc(var(--harbor-safe-top, env(safe-area-inset-top, 0px)) + 14px)",
+      }}
     >
       <style>{VIEW_SWAP_CSS}</style>
       <Header />
@@ -133,7 +135,7 @@ function TabStrip({ tab, onTab }: { tab: SectionId; onTab: (t: SectionId) => voi
             type="button"
             onClick={() => onTab(s.id)}
             aria-current={on ? "page" : undefined}
-            className={`flex shrink-0 items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-[13.5px] font-semibold transition-colors duration-200 active:scale-[0.97] motion-reduce:transition-none ${
+            className={`flex shrink-0 items-center justify-center gap-1.5 rounded-full px-4 py-3.5 text-[13.5px] font-semibold transition-colors duration-200 active:scale-[0.97] motion-reduce:transition-none ${
               on ? "bg-ink text-canvas" : "bg-surface text-ink-muted ring-1 ring-edge-soft"
             }`}
           >
