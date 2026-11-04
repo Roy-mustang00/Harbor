@@ -151,7 +151,9 @@ export function PhoneSettings({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[70] flex flex-col bg-canvas">
       <header
         className="flex items-center gap-2 px-3 pb-1"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)" }}
+        style={{
+          paddingTop: "calc(var(--harbor-safe-top, env(safe-area-inset-top, 0px)) + 10px)",
+        }}
       >
         <button
           type="button"
@@ -160,17 +162,20 @@ export function PhoneSettings({ onClose }: { onClose: () => void }) {
             if (view.kind !== "root") setView({ kind: "root" });
             else onClose();
           }}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-ink transition-colors active:bg-raised/60"
+          className="flex h-12 w-12 items-center justify-center rounded-full text-ink transition-colors active:bg-raised/60"
         >
           <ArrowLeft size={21} strokeWidth={2.2} />
         </button>
         <h1 className="flex-1 text-center text-[19px] font-semibold text-ink">{title}</h1>
-        <span className="h-10 w-10" />
+        <span className="h-12 w-12" />
       </header>
 
       <div
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 28px)" }}
+        style={{
+          paddingBottom:
+            "calc(var(--harbor-safe-bottom, env(safe-area-inset-bottom, 0px)) + 28px)",
+        }}
       >
         <div className="flex flex-col gap-6">
           {view.kind === "root" && (
@@ -378,7 +383,7 @@ function LivePlaylistsView() {
                 onClick={() =>
                   update({ iptvPlaylists: playlists.filter((x) => x.id !== p.id) })
                 }
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-subtle active:bg-raised/60"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-ink-subtle active:bg-raised/60"
               >
                 <Trash2 size={17} strokeWidth={2} />
               </button>
@@ -411,7 +416,7 @@ function LivePlaylistsView() {
             type="button"
             disabled={!url.trim()}
             onClick={add}
-            className="flex h-11 items-center justify-center rounded-full bg-ink text-[14.5px] font-semibold text-canvas transition-transform active:scale-[0.98] disabled:opacity-40"
+            className="flex h-12 items-center justify-center rounded-full bg-ink text-[14.5px] font-semibold text-canvas transition-transform active:scale-[0.98] disabled:opacity-40"
           >
             {t("Add")}
           </button>
