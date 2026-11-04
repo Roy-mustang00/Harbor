@@ -82,7 +82,9 @@ export function MobileBrowse({ standalone = false }: { standalone?: boolean }) {
 
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-40 flex items-start justify-between gap-3 px-3"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)" }}
+        style={{
+          paddingTop: "calc(var(--harbor-safe-top, env(safe-area-inset-top, 0px)) + 10px)",
+        }}
       >
         <div className="pointer-events-auto min-w-0">
           {/* Standalone: the device switcher picks a host to control; on-device there is none. */}
@@ -136,7 +138,10 @@ function ViewScroll({ children }: { children: ReactNode }) {
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)" }}
+        style={{
+          paddingBottom:
+            "calc(var(--harbor-safe-bottom, env(safe-area-inset-bottom, 0px)) + 84px)",
+        }}
       >
         {children}
       </div>
