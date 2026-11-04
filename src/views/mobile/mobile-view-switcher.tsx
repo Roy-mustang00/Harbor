@@ -80,7 +80,7 @@ export function MobileViewSwitcher({
         aria-expanded={open}
         aria-label={t("Browsing {section}. Change section", { section: t(current.label) })}
         onClick={() => setOpen((o) => !o)}
-        className="flex h-11 items-center gap-1.5 rounded-lg border border-edge-soft/60 bg-elevated/85 pe-3 ps-2 text-ink shadow-[0_8px_24px_-10px_rgba(0,0,0,0.5)] backdrop-blur-xl transition-transform duration-150 active:scale-[0.96]"
+        className="flex h-12 items-center gap-1.5 rounded-lg border border-edge-soft/60 bg-elevated/85 pe-3 ps-2 text-ink shadow-[0_8px_24px_-10px_rgba(0,0,0,0.5)] backdrop-blur-xl transition-transform duration-150 active:scale-[0.96]"
       >
         <span className="flex h-[26px] w-[26px] items-center justify-center">
           <CurrentIcon />
