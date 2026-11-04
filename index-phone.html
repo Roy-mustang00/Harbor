@@ -40,6 +40,7 @@
         position: fixed;
         inset: 0;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         background: #0a0a0a;
@@ -76,6 +77,41 @@
       }
       #harbor-boot.gone {
         opacity: 0;
+      }
+      /* Boot diagnostics (silent check 15): the panel is created by the
+         pre-bundle script below and by main-phone.tsx's boot-error helper.
+         It stays hidden until an error is recorded, so a healthy boot keeps
+         the plain sail. When shown, the cover must accept taps so the
+         Reload button works — the cover itself is pointer-events: none. */
+      #harbor-boot-error {
+        display: none;
+        max-width: min(520px, 88vw);
+        max-height: 52vh;
+        overflow-y: auto;
+        margin-top: 24px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: rgba(28, 30, 37, 0.96);
+        color: #e9ecf2;
+        font: 13px/1.55 system-ui, sans-serif;
+        text-align: left;
+        white-space: pre-wrap;
+        word-break: break-word;
+        pointer-events: auto;
+      }
+      #harbor-boot-error:not(:empty) {
+        display: block;
+      }
+      #harbor-boot-error button {
+        display: block;
+        margin-top: 12px;
+        padding: 10px 18px;
+        border: 0;
+        border-radius: 8px;
+        background: #e8aa6c;
+        color: #111214;
+        font: 600 14px system-ui, sans-serif;
+        cursor: pointer;
       }
       #harbor-boot > svg {
         width: 96px;
@@ -185,6 +221,97 @@
           custom.appendChild(poster); mark.after(custom); mark.style.display = 'none';
         }
       } catch (e) {}
+    </script>
+    <script>
+      // Pre-bundle boot diagnostics (silent check 15). This classic script
+      // runs before the deferred module scripts below, so it also covers
+      // the one case main-phone.tsx cannot: a module import/parse failure,
+      // where its own module-scope 15 s timer never registers and the sail
+      // would otherwise hang forever with no evidence. On a phone there is
+      // no adb/chrome://inspect, so the error must be on the screen.
+      // Inline scripts are already the pattern in this file (overlay +
+      // artwork scripts above), so no new CSP/Tauri-inline risk is added.
+      (function () {
+        var KEY = "harbor.phone-boot-error.v1";
+        var shown = "";
+        function panel() {
+          var boot = document.getElementById("harbor-boot");
+          if (!boot) return null;
+          var p = document.getElementById("harbor-boot-error");
+          if (!p) {
+            p = document.createElement("div");
+            p.id = "harbor-boot-error";
+            boot.appendChild(p);
+          }
+          boot.style.pointerEvents = "auto";
+          return p;
+        }
+        function show(text) {
+          if (!text || text === shown) return;
+          shown = text;
+          var p = panel();
+          if (!p) return;
+          p.textContent = "";
+          var msg = document.createElement("div");
+          msg.textContent = text;
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = "Reload app";
+          btn.addEventListener("click", function () {
+            window.location.reload();
+          });
+          p.appendChild(msg);
+          p.appendChild(btn);
+        }
+        function record(text) {
+          try {
+            window.localStorage.setItem(KEY, String(text).slice(0, 2000));
+          } catch (e) {}
+        }
+        function describe(err) {
+          if (err == null) return "Unknown error";
+          if (typeof err === "string") return err;
+          var m = err.message || String(err);
+          if (err.stack) m += "\n" + String(err.stack).slice(0, 800);
+          return m;
+        }
+        window.addEventListener(
+          "error",
+          function (e) {
+            var text = "Boot error: " + (e.message || describe(e.error));
+            record(text);
+            show(text);
+          },
+          true,
+        );
+        window.addEventListener("unhandledrejection", function (e) {
+          var text = "Boot error (unhandled rejection): " + describe(e.reason);
+          record(text);
+          show(text);
+        });
+        try {
+          var prev = window.localStorage.getItem(KEY);
+          if (prev) show("Previous launch failed:\n" + prev);
+        } catch (e) {}
+        // Watchdog for the bundle-never-loaded case. 20 s, not 10 s: a
+        // healthy first paint on a slow device can take ~10 s (measured
+        // on the TV entry), and main-phone.tsx's own 15 s failsafe already
+        // reports the bundle-loaded-but-empty case earlier.
+        window.setTimeout(function () {
+          var boot = document.getElementById("harbor-boot");
+          if (!boot) return;
+          var existing = document.getElementById("harbor-boot-error");
+          if (existing && existing.textContent) return;
+          var root = document.getElementById("root");
+          if (root && root.childNodes.length > 0) return;
+          var text =
+            "Boot timed out after 20 seconds: the phone shell did not " +
+            "render and no JavaScript error was captured. The bundle may " +
+            "have stalled before first render. Tap Reload to try again.";
+          record(text);
+          show(text);
+        }, 20000);
+      })();
     </script>
     <script type="module" src="/src/boot-artwork.ts"></script>
     <script type="module" src="/src/main-phone.tsx"></script>
