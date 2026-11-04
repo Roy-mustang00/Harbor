@@ -46,7 +46,12 @@ export function MobileProfile({
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
-    <div className="flex h-full flex-col gap-6 px-5 pt-4">
+    <div
+      className="flex h-full flex-col gap-6 px-5"
+      style={{
+        paddingTop: "calc(var(--harbor-safe-top, env(safe-area-inset-top, 0px)) + 16px)",
+      }}
+    >
       <header className="flex items-center justify-center">
         <h1 className="font-display text-[22px] font-medium text-ink">{t("Profile")}</h1>
       </header>
