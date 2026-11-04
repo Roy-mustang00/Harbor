@@ -178,7 +178,9 @@ export function MobileSearch() {
   return (
     <div
       className="flex flex-col gap-7 px-5"
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 14px)" }}
+      style={{
+        paddingTop: "calc(var(--harbor-safe-top, env(safe-area-inset-top, 0px)) + 14px)",
+      }}
     >
       <style>{VIEW_SWAP_CSS}</style>
       <div className="flex items-center gap-2.5">
@@ -295,6 +297,8 @@ function SearchBar({
         enterKeyHint="search"
         inputMode="search"
         autoComplete="off"
+        autoCapitalize="off"
+        autoCorrect="off"
         spellCheck={false}
         placeholder={t("Actor, title, genre")}
         className="min-w-0 flex-1 bg-transparent text-[16px] font-medium text-canvas placeholder:text-canvas/45 focus:outline-none"
@@ -308,9 +312,11 @@ function SearchBar({
             onClear();
             ref.current?.focus();
           }}
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-canvas/12 text-canvas/70 transition-transform active:scale-90 motion-reduce:transition-none"
+          className="grid h-12 w-12 shrink-0 place-items-center text-canvas/70 transition-transform active:scale-90 motion-reduce:transition-none"
         >
-          <X size={14} strokeWidth={2.6} />
+          <span className="grid h-6 w-6 place-items-center rounded-full bg-canvas/12">
+            <X size={14} strokeWidth={2.6} />
+          </span>
         </button>
       )}
     </div>
