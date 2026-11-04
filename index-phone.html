@@ -2,7 +2,10 @@
 <html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#111214" />
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
     <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
@@ -311,6 +314,56 @@
           record(text);
           show(text);
         }, 20000);
+      })();
+    </script>
+    <script>
+      // Phone safe-area variables (UI round, silent check 16). env() is the
+      // only inset source visible to the page, but below Android WebView 140
+      // it can report 0 for the status/gesture bars (it derives from the
+      // display cutout, not the bars). Measure the resolved env() values
+      // through a probe element and floor them: top >= 24px (status bar),
+      // bottom >= 20px (gesture bar), so the tab bar and top chrome never
+      // sit flush under the system bars even when env() under-reports.
+      // Components read var(--harbor-safe-*, env(...)), so the web habitat
+      // (which never loads this page) keeps plain env() behaviour.
+      // tauri-plugin-safe-area-insets was NOT adopted here: it needs a new
+      // Rust plugin registration + capability + JS dependency, a bigger
+      // build risk than this page-level floor for a UI-only round. The
+      // remaining limit is documented in stage2-progress.md: a WebView
+      // that over-reports an inset only adds padding, it never hides chrome.
+      (function () {
+        var root = document.documentElement;
+        function px(v) {
+          var n = parseFloat(v);
+          return isNaN(n) ? 0 : n;
+        }
+        function measure() {
+          try {
+            var probe = document.createElement("div");
+            probe.style.cssText =
+              "position:fixed;left:-9999px;top:0;width:0;height:0;visibility:hidden;" +
+              "padding-top:env(safe-area-inset-top,0px);" +
+              "padding-bottom:env(safe-area-inset-bottom,0px);" +
+              "padding-left:env(safe-area-inset-left,0px);" +
+              "padding-right:env(safe-area-inset-right,0px);";
+            document.body.appendChild(probe);
+            var cs = window.getComputedStyle(probe);
+            root.style.setProperty("--harbor-safe-top", Math.max(px(cs.paddingTop), 24) + "px");
+            root.style.setProperty(
+              "--harbor-safe-bottom",
+              Math.max(px(cs.paddingBottom), 20) + "px",
+            );
+            root.style.setProperty("--harbor-safe-left", cs.paddingLeft);
+            root.style.setProperty("--harbor-safe-right", cs.paddingRight);
+            document.body.removeChild(probe);
+          } catch (e) {}
+        }
+        measure();
+        var t;
+        window.addEventListener("resize", function () {
+          clearTimeout(t);
+          t = window.setTimeout(measure, 150);
+        });
       })();
     </script>
     <script type="module" src="/src/boot-artwork.ts"></script>
