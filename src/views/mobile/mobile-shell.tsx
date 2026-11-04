@@ -165,7 +165,10 @@ function ShellBody({ standalone = false }: { standalone?: boolean }) {
       {standalone && confirmExit && (
         <div
           className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 px-4"
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
+          style={{
+            paddingBottom:
+              "calc(var(--harbor-safe-bottom, env(safe-area-inset-bottom, 0px)) + 24px)",
+          }}
           role="dialog"
           aria-modal="true"
           aria-label={t("Exit Harbor?")}
@@ -260,7 +263,10 @@ function BrowseScroll({ children }: { children: React.ReactNode }) {
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)" }}
+        style={{
+          paddingBottom:
+            "calc(var(--harbor-safe-bottom, env(safe-area-inset-bottom, 0px)) + 84px)",
+        }}
       >
         {children}
       </div>
@@ -290,7 +296,7 @@ const NOW_PLAYING_CSS = `
   transition: transform 320ms var(--ease-out);
 }
 .harbor-nowplaying-slide[data-hidden="true"] {
-  transform: translateY(calc(100% + env(safe-area-inset-bottom, 0px) + 74px + 24px));
+  transform: translateY(calc(100% + var(--harbor-safe-bottom, env(safe-area-inset-bottom, 0px)) + 74px + 24px));
 }
 @media (prefers-reduced-motion: reduce) {
   .harbor-nowplaying-in, .harbor-nowplaying-out { animation: none; }
@@ -328,7 +334,9 @@ function NowPlayingBar({ onExpand }: { onExpand: () => void }) {
     <div
       className="harbor-nowplaying-slide pointer-events-none fixed inset-x-0 z-30 flex justify-center px-3"
       data-hidden={sheetOpen ? "true" : undefined}
-      style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 74px)" }}
+      style={{
+        bottom: "calc(var(--harbor-safe-bottom, env(safe-area-inset-bottom, 0px)) + 74px)",
+      }}
     >
       <style>{NOW_PLAYING_CSS}</style>
       <div className={`w-[min(440px,100%)] ${active ? "harbor-nowplaying-in" : "harbor-nowplaying-out"}`}>
