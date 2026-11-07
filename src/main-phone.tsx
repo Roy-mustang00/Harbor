@@ -2,9 +2,11 @@ import { Component, StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { onBackButtonPress } from "@tauri-apps/api/app";
 import { AuthProvider } from "@/lib/auth";
+import { ContextMenuProvider } from "@/lib/context-menu";
 import { hydrateCustomThemes } from "@/lib/custom-themes";
 import { getUiLanguage } from "@/lib/i18n/store";
 import { ensureUiLocale } from "@/lib/i18n/load-locale";
+import { ParentalProvider } from "@/lib/parental";
 import { applyOsDataset, isAndroid } from "@/lib/platform";
 import { ProfilesProvider } from "@/lib/profiles";
 import { SearchProvider } from "@/lib/search-context";
@@ -22,8 +24,17 @@ import "flag-icons/css/flag-icons.min.css";
 // import main.tsx/App.tsx or the TV entry: each bundle stays separate.
 //
 // The provider stack is only what the mobile subtree actually consumes
-// (settings, profiles, auth, search), in the same relative order App.tsx
-// nests them. MobileShell mounts standalone here: its local provider
+// (settings, profiles, parental, auth, search, context menu), in the same
+// relative order App.tsx nests them. Parental sits inside Profiles because
+// ParentalProvider itself reads useProfiles, and SearchProvider reads
+// useParental — omitting it crashed build #16 at boot
+// ("useParental outside ParentalProvider"). ContextMenuProvider sits
+// innermost, around the shell only, because the AI search result rows read
+// useContextMenu; it holds plain local state and renders no UI of its own.
+// ViewProvider is deliberately NOT here: it is the desktop navigation core
+// (it also reads useTogether), and the phone shell navigates itself — the
+// AI-results path that also reads useView stays a known deferred gap, not a
+// reason to drag the desktop view stack into this entry.
 // (local-remote.tsx) replaces the WebSocket remote provider — library
 // actions and profile switches execute on-device, and the browse, search
 // and detail screens read the local data libraries as they always have.
@@ -203,11 +214,15 @@ async function mount() {
       <PhoneBootErrorBoundary>
         <SettingsProvider syncTorrentEnginePolicy>
           <ProfilesProvider>
-            <AuthProvider>
-              <SearchProvider>
-                <MobileShell standalone />
-              </SearchProvider>
-            </AuthProvider>
+            <ParentalProvider>
+              <AuthProvider>
+                <SearchProvider>
+                  <ContextMenuProvider>
+                    <MobileShell standalone />
+                  </ContextMenuProvider>
+                </SearchProvider>
+              </AuthProvider>
+            </ParentalProvider>
           </ProfilesProvider>
         </SettingsProvider>
       </PhoneBootErrorBoundary>
