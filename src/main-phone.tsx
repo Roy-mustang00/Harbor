@@ -12,6 +12,8 @@ import { ProfilesProvider } from "@/lib/profiles";
 import { SearchProvider } from "@/lib/search-context";
 import { loadSecrets } from "@/lib/secret-store";
 import { SettingsProvider } from "@/lib/settings";
+import { TogetherProvider } from "@/lib/together/provider";
+import { ViewProvider } from "@/lib/view";
 import { MobileShell } from "@/views/mobile/mobile-shell";
 import { activatePhoneBack, runPhoneBack } from "@/views/mobile/phone-back";
 import "@/index.css";
@@ -24,17 +26,25 @@ import "flag-icons/css/flag-icons.min.css";
 // import main.tsx/App.tsx or the TV entry: each bundle stays separate.
 //
 // The provider stack is only what the mobile subtree actually consumes
-// (settings, profiles, parental, auth, search, context menu), in the same
-// relative order App.tsx nests them. Parental sits inside Profiles because
+// (settings, profiles, parental, auth, together, view, search, context
+// menu), in the same relative order App.tsx nests them (Settings 470 →
+// Profiles 471 → Parental 472 → Auth 480 → Together 482 → View 483 →
+// Search 485 → ContextMenu 492). Parental sits inside Profiles because
 // ParentalProvider itself reads useProfiles, and SearchProvider reads
 // useParental — omitting it crashed build #16 at boot
-// ("useParental outside ParentalProvider"). ContextMenuProvider sits
+// ("useParental outside ParentalProvider"). TogetherProvider sits inside
+// Auth because it reads useSelfIdentity, which reads useAuth, useProfiles
+// and useSettings; ViewProvider sits inside Together because it reads
+// useTogether unconditionally (view.tsx:1414), and SearchProvider itself
+// reads useView unconditionally (search-context.tsx:542) — omitting
+// ViewProvider crashed build #17 at boot ("useView outside
+// ViewProvider"). ViewProvider's other two reads are provider-free
+// (useBigPicture and useSectionBackActive are useSyncExternalStore over
+// module stores), and TogetherProvider stays inert with no relay
+// configured (settings.togetherRelayUrl defaults to ""), so neither drags
+// desktop behaviour into the phone entry. ContextMenuProvider sits
 // innermost, around the shell only, because the AI search result rows read
 // useContextMenu; it holds plain local state and renders no UI of its own.
-// ViewProvider is deliberately NOT here: it is the desktop navigation core
-// (it also reads useTogether), and the phone shell navigates itself — the
-// AI-results path that also reads useView stays a known deferred gap, not a
-// reason to drag the desktop view stack into this entry.
 // (local-remote.tsx) replaces the WebSocket remote provider — library
 // actions and profile switches execute on-device, and the browse, search
 // and detail screens read the local data libraries as they always have.
@@ -216,11 +226,15 @@ async function mount() {
           <ProfilesProvider>
             <ParentalProvider>
               <AuthProvider>
-                <SearchProvider>
-                  <ContextMenuProvider>
-                    <MobileShell standalone />
-                  </ContextMenuProvider>
-                </SearchProvider>
+                <TogetherProvider>
+                  <ViewProvider>
+                    <SearchProvider>
+                      <ContextMenuProvider>
+                        <MobileShell standalone />
+                      </ContextMenuProvider>
+                    </SearchProvider>
+                  </ViewProvider>
+                </TogetherProvider>
               </AuthProvider>
             </ParentalProvider>
           </ProfilesProvider>
