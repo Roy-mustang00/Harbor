@@ -1,18 +1,33 @@
 import { Component, StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { onBackButtonPress } from "@tauri-apps/api/app";
+import { AnilistProvider } from "@/lib/anilist/provider";
 import { AuthProvider } from "@/lib/auth";
+import { CharacterFavoritesProvider } from "@/lib/character-favorites";
 import { ContextMenuProvider } from "@/lib/context-menu";
 import { hydrateCustomThemes } from "@/lib/custom-themes";
 import { getUiLanguage } from "@/lib/i18n/store";
 import { ensureUiLocale } from "@/lib/i18n/load-locale";
+import { FavoritesProvider } from "@/lib/iptv/favorites";
+import { ListenTogetherProvider } from "@/lib/listen-together/provider";
+import { LocalWatchlistProvider } from "@/lib/local-watchlist";
+import { MalProvider } from "@/lib/mal/provider";
+import { MangaFavoritesProvider } from "@/lib/manga-favorites";
+import { MediaFavoritesProvider } from "@/lib/media-favorites";
+import { OnboardingProvider } from "@/lib/onboarding";
 import { ParentalProvider } from "@/lib/parental";
 import { applyOsDataset, isAndroid } from "@/lib/platform";
 import { ProfilesProvider } from "@/lib/profiles";
+import { PublicMetaDbProvider } from "@/lib/publicmetadb/provider";
+import { RankingsProvider } from "@/lib/rankings";
 import { SearchProvider } from "@/lib/search-context";
 import { loadSecrets } from "@/lib/secret-store";
 import { SettingsProvider } from "@/lib/settings";
+import { SimklProvider } from "@/lib/simkl/provider";
+import { LetterboxdProvider } from "@/lib/stremboxd/provider";
 import { TogetherProvider } from "@/lib/together/provider";
+import { TopRankModalProvider } from "@/lib/top-rank-modal";
+import { TraktProvider } from "@/lib/trakt/provider";
 import { ViewProvider } from "@/lib/view";
 import { MobileShell } from "@/views/mobile/mobile-shell";
 import { activatePhoneBack, runPhoneBack } from "@/views/mobile/phone-back";
@@ -25,29 +40,41 @@ import "flag-icons/css/flag-icons.min.css";
 // Big Picture over the touch shell. Like main-tv.tsx, this entry must not
 // import main.tsx/App.tsx or the TV entry: each bundle stays separate.
 //
-// The provider stack is only what the mobile subtree actually consumes
-// (settings, profiles, parental, auth, together, view, search, context
-// menu), in the same relative order App.tsx nests them (Settings 470 →
-// Profiles 471 → Parental 472 → Auth 480 → Together 482 → View 483 →
-// Search 485 → ContextMenu 492). Parental sits inside Profiles because
-// ParentalProvider itself reads useProfiles, and SearchProvider reads
-// useParental — omitting it crashed build #16 at boot
-// ("useParental outside ParentalProvider"). TogetherProvider sits inside
-// Auth because it reads useSelfIdentity, which reads useAuth, useProfiles
-// and useSettings; ViewProvider sits inside Together because it reads
-// useTogether unconditionally (view.tsx:1414), and SearchProvider itself
-// reads useView unconditionally (search-context.tsx:542) — omitting
-// ViewProvider crashed build #17 at boot ("useView outside
-// ViewProvider"). ViewProvider's other two reads are provider-free
-// (useBigPicture and useSectionBackActive are useSyncExternalStore over
-// module stores), and TogetherProvider stays inert with no relay
-// configured (settings.togetherRelayUrl defaults to ""), so neither drags
-// desktop behaviour into the phone entry. ContextMenuProvider sits
-// innermost, around the shell only, because the AI search result rows read
-// useContextMenu; it holds plain local state and renders no UI of its own.
-// (local-remote.tsx) replaces the WebSocket remote provider — library
-// actions and profile switches execute on-device, and the browse, search
-// and detail screens read the local data libraries as they always have.
+// The provider stack mirrors App.tsx's full 24-provider tree (lines
+// 470-493) in the same order, minus DvrProvider only — see below. The
+// one-by-one approach is what failed three device tests in a row
+// (#16 useParental, #17 useView, #18 media list store): each fix exposed
+// the next missing layer. Both Tauri forks mount the full tree on phones
+// (VAYRA: one entry, full tree, device-verified; halhudhli: desktop entry
+// on phones, full tree), and the 2026-11-08 census (39 throwing hooks /
+// 34 throw sites, 3,173-file phone reachable set) found exactly one live
+// boot blocker — useMediaFavorites, consumed unconditionally at boot via
+// useLibrarySnapshot → useFavoriteItems (library-snapshot.ts:197,337 ←
+// local-remote.tsx) — which MediaFavoritesProvider below now covers.
+// Every added provider was audited for mobile safety: no module-scope
+// invoke/listen/fetch in any provider module or store; no provider throws
+// synchronously at mount for any reason other than a missing provider;
+// every cross-provider hook resolves to a provider earlier in this order
+// (Parental reads useProfiles; Together reads useSelfIdentity → Auth /
+// Profiles / Settings; View reads useTogether; Search reads useView;
+// Media / Character / Manga favorites + LocalWatchlist read useProfiles
+// via the media list store). Mount effects that remain: Rankings fires 5
+// caught TMDB fetches at boot iff a tmdbKey is set; Anilist / Mal validate
+// their sessions iff logged in (Mal's validator clears the session on a
+// failed fetch while online — accepted: it only fires with an active MAL
+// session); Simkl keeps a permanent 60 s retry interval that no-ops
+// without a session / queue; Letterboxd POSTs prefs iff fully connected
+// (caught); ListenTogether stays inert with no relay configured
+// (settings.togetherRelayUrl defaults to ""). DvrProvider is the one
+// deliberate omission: its mount effect invokes dvr_list, which exists
+// only in desktop src-tauri/src/lib.rs:2158-2162 and zero times in
+// mobile.rs, its backend shells to a desktop mpv binary, and useDvr has
+// zero call sites in the phone reachable set — dead weight on Android.
+// (Re-adding it is safe only if the DVR commands are registered in
+// mobile.rs first.) Phone specifics are unchanged: the boot diagnostics
+// and error boundary below, phone-back handling, LocalMobileRemoteProvider
+// inside MobileShell (local-remote.tsx) instead of the WebSocket remote
+// provider, and ContextMenuProvider in App.tsx's position around the shell.
 
 // index-phone.html inherits the desktop page's boot contract: #root starts
 // inert + data-startup-hidden behind the opaque #harbor-boot splash, and only
@@ -225,17 +252,47 @@ async function mount() {
         <SettingsProvider syncTorrentEnginePolicy>
           <ProfilesProvider>
             <ParentalProvider>
-              <AuthProvider>
-                <TogetherProvider>
-                  <ViewProvider>
-                    <SearchProvider>
-                      <ContextMenuProvider>
-                        <MobileShell standalone />
-                      </ContextMenuProvider>
-                    </SearchProvider>
-                  </ViewProvider>
-                </TogetherProvider>
-              </AuthProvider>
+              <TraktProvider>
+                <AnilistProvider>
+                  <MalProvider>
+                    <SimklProvider>
+                      <PublicMetaDbProvider>
+                        <LetterboxdProvider>
+                          <RankingsProvider>
+                            <AuthProvider>
+                              <OnboardingProvider>
+                                <TogetherProvider>
+                                  <ViewProvider>
+                                    <ListenTogetherProvider>
+                                      <SearchProvider>
+                                        <FavoritesProvider>
+                                          <MediaFavoritesProvider>
+                                            <CharacterFavoritesProvider>
+                                              <MangaFavoritesProvider>
+                                                <LocalWatchlistProvider>
+                                                  <ContextMenuProvider>
+                                                    <TopRankModalProvider>
+                                                      <MobileShell standalone />
+                                                    </TopRankModalProvider>
+                                                  </ContextMenuProvider>
+                                                </LocalWatchlistProvider>
+                                              </MangaFavoritesProvider>
+                                            </CharacterFavoritesProvider>
+                                          </MediaFavoritesProvider>
+                                        </FavoritesProvider>
+                                      </SearchProvider>
+                                    </ListenTogetherProvider>
+                                  </ViewProvider>
+                                </TogetherProvider>
+                              </OnboardingProvider>
+                            </AuthProvider>
+                          </RankingsProvider>
+                        </LetterboxdProvider>
+                      </PublicMetaDbProvider>
+                    </SimklProvider>
+                  </MalProvider>
+                </AnilistProvider>
+              </TraktProvider>
             </ParentalProvider>
           </ProfilesProvider>
         </SettingsProvider>
