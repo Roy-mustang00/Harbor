@@ -14,8 +14,13 @@ import { DpadRemote } from "./dpad-remote";
 import { BottomTabBar, type MobileTab } from "./bottom-tab-bar";
 import { MobileRemoteProvider, useMobileRemote } from "./mobile-remote";
 import { LocalMobileRemoteProvider } from "./local-remote";
-import { pushPhoneBack } from "./phone-back";
+import { pushPhoneBack, usePhoneHistoryBackGuard } from "./phone-back";
 import { SheetLockProvider, useSheetLock } from "./mobile-sheet-lock";
+import {
+  TabBarAutoHideProvider,
+  useHideTabBarOnScroll,
+  useTabBarAutoHide,
+} from "./tab-bar-autohide";
 import { useMobileRemoteStyle } from "./remote-style";
 import { ScrollToTop } from "./scroll-to-top";
 import { MangaNowBar } from "./manga-remote/manga-now-bar";
@@ -41,15 +46,17 @@ export function MobileShell({ standalone = false }: { standalone?: boolean }) {
   return (
     <Provider>
       <SheetLockProvider>
-        {setup ? (
-          <Suspense fallback={<HarborLoader />}>
-            <MobileOnboard onExit={() => setSetup(false)} />
-          </Suspense>
-        ) : isMangaReaderRoute() ? (
-          <MangaReaderShell />
-        ) : (
-          <ShellBody standalone={standalone} />
-        )}
+        <TabBarAutoHideProvider>
+          {setup ? (
+            <Suspense fallback={<HarborLoader />}>
+              <MobileOnboard onExit={() => setSetup(false)} />
+            </Suspense>
+          ) : isMangaReaderRoute() ? (
+            <MangaReaderShell />
+          ) : (
+            <ShellBody standalone={standalone} />
+          )}
+        </TabBarAutoHideProvider>
       </SheetLockProvider>
     </Provider>
   );
@@ -77,8 +84,16 @@ function ShellBody({ standalone = false }: { standalone?: boolean }) {
   const [confirmExit, setConfirmExit] = useState(false);
   const showNowPlaying = tab !== "remote";
   const rootRef = useRef<HTMLDivElement>(null);
+  const { showBar } = useTabBarAutoHide();
+
+  // Second delivery channel for Android's system Back (gesture included):
+  // a WebView-history sentinel whose popstate runs the same phone-back
+  // chain as the Tauri bridge in main-phone.tsx. Inert outside the
+  // standalone phone entry.
+  usePhoneHistoryBackGuard(standalone);
 
   const selectTab = (next: MobileTab) => {
+    showBar();
     setTab(next);
     setSeen((prev) => (prev.has(next) ? prev : new Set(prev).add(next)));
   };
@@ -131,21 +146,21 @@ function ShellBody({ standalone = false }: { standalone?: boolean }) {
         </TabLayer>
         <TabLayer active={tab === "search"}>
           {seen.has("search") && (
-            <BrowseScroll>
+            <BrowseScroll autoHide={standalone}>
               <MobileSearch />
             </BrowseScroll>
           )}
         </TabLayer>
         <TabLayer active={tab === "profile"}>
           {seen.has("profile") && (
-            <BrowseScroll>
+            <BrowseScroll autoHide={standalone}>
               <MobileProfile onOpenRemote={() => selectTab("remote")} standalone={standalone} />
             </BrowseScroll>
           )}
         </TabLayer>
         <TabLayer active={tab === "mystuff"}>
           {seen.has("mystuff") && (
-            <BrowseScroll>
+            <BrowseScroll autoHide={standalone}>
               <MobileLibrary />
             </BrowseScroll>
           )}
@@ -234,9 +249,16 @@ function TabLayer({ active, children }: { active: boolean; children: React.React
   );
 }
 
-function BrowseScroll({ children }: { children: React.ReactNode }) {
+function BrowseScroll({
+  children,
+  autoHide = false,
+}: {
+  children: React.ReactNode;
+  autoHide?: boolean;
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showTop, setShowTop] = useState(false);
+  useHideTabBarOnScroll(scrollRef, autoHide);
 
   useEffect(() => {
     const el = scrollRef.current;

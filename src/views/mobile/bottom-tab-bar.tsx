@@ -5,6 +5,7 @@ import { useProfiles } from "@/lib/profiles";
 import { useT } from "@/lib/i18n";
 import { useMobileRemote } from "./mobile-remote";
 import { useSheetLock } from "./mobile-sheet-lock";
+import { useTabBarAutoHide } from "./tab-bar-autohide";
 
 export type MobileTab = "remote" | "search" | "home" | "mystuff" | "profile";
 
@@ -52,6 +53,7 @@ export function BottomTabBar({
   const { snapshot } = useMobileRemote();
   const { activeProfile } = useProfiles();
   const { sheetOpen } = useSheetLock();
+  const { barHidden } = useTabBarAutoHide();
   const avatar = snapshot.profile?.avatar ?? activeProfile?.avatar ?? null;
   const color = snapshot.profile?.color ?? activeProfile?.color ?? "oklch(0.78 0.13 60)";
   const pname = snapshot.profile?.name ?? activeProfile?.name ?? "";
@@ -60,7 +62,7 @@ export function BottomTabBar({
   return (
     <nav
       className="harbor-tabbar-slide pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4"
-      data-hidden={sheetOpen ? "true" : undefined}
+      data-hidden={sheetOpen || barHidden ? "true" : undefined}
       style={{
         paddingBottom:
           "calc(var(--harbor-safe-bottom, env(safe-area-inset-bottom, 0px)) + 10px)",

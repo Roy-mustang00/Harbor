@@ -7,6 +7,7 @@ import { MobileDiscover } from "./mobile-discover";
 import { MobileViewSwitcher } from "./mobile-view-switcher";
 import { MobileDeviceSwitcher } from "./mobile-device-switcher";
 import { ScrollToTop } from "./scroll-to-top";
+import { useHideTabBarOnScroll, useTabBarAutoHide } from "./tab-bar-autohide";
 
 export type View = "home" | "movies" | "shows" | "anime" | "discover";
 
@@ -35,8 +36,10 @@ const VIEW_TRANSITION_CSS = `
 export function MobileBrowse({ standalone = false }: { standalone?: boolean }) {
   const [view, setView] = useState<View>("home");
   const [seen, setSeen] = useState<Set<View>>(() => new Set<View>(["home"]));
+  const { showBar } = useTabBarAutoHide();
 
   const selectView = (next: View) => {
+    showBar();
     setView(next);
     setSeen((prev) => (prev.has(next) ? prev : new Set(prev).add(next)));
   };
@@ -46,35 +49,35 @@ export function MobileBrowse({ standalone = false }: { standalone?: boolean }) {
       <style>{VIEW_TRANSITION_CSS}</style>
       <ViewLayer active={view === "home"}>
         {seen.has("home") && (
-          <ViewScroll>
+          <ViewScroll autoHide={standalone}>
             <MobileHome />
           </ViewScroll>
         )}
       </ViewLayer>
       <ViewLayer active={view === "movies"}>
         {seen.has("movies") && (
-          <ViewScroll>
+          <ViewScroll autoHide={standalone}>
             <MobileMovies />
           </ViewScroll>
         )}
       </ViewLayer>
       <ViewLayer active={view === "shows"}>
         {seen.has("shows") && (
-          <ViewScroll>
+          <ViewScroll autoHide={standalone}>
             <MobileShows />
           </ViewScroll>
         )}
       </ViewLayer>
       <ViewLayer active={view === "anime"}>
         {seen.has("anime") && (
-          <ViewScroll>
+          <ViewScroll autoHide={standalone}>
             <MobileAnime />
           </ViewScroll>
         )}
       </ViewLayer>
       <ViewLayer active={view === "discover"}>
         {seen.has("discover") && (
-          <ViewScroll>
+          <ViewScroll autoHide={standalone}>
             <MobileDiscover />
           </ViewScroll>
         )}
@@ -109,9 +112,16 @@ function ViewLayer({ active, children }: { active: boolean; children: ReactNode 
   );
 }
 
-function ViewScroll({ children }: { children: ReactNode }) {
+function ViewScroll({
+  children,
+  autoHide = false,
+}: {
+  children: ReactNode;
+  autoHide?: boolean;
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showTop, setShowTop] = useState(false);
+  useHideTabBarOnScroll(scrollRef, autoHide);
 
   useEffect(() => {
     const el = scrollRef.current;
