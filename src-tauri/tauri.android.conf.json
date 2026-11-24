@@ -22,7 +22,7 @@
       "resources/capstan/": null
     },
     "android": {
-      "minSdkVersion": 24
+      "minSdkVersion": 26
     }
   },
   "plugins": {
