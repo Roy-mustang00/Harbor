@@ -30,7 +30,8 @@ import { TopRankModalProvider } from "@/lib/top-rank-modal";
 import { TraktProvider } from "@/lib/trakt/provider";
 import { ViewProvider } from "@/lib/view";
 import { MobileShell } from "@/views/mobile/mobile-shell";
-import { activatePhoneBack, runPhoneBack } from "@/views/mobile/phone-back";
+import { activatePhoneBack, dispatchPhoneBack } from "@/views/mobile/phone-back";
+import { close as closeAppWindow } from "@/lib/window";
 import "@/index.css";
 import "flag-icons/css/flag-icons.min.css";
 
@@ -228,15 +229,34 @@ applyOsDataset();
 // entry (the module stays inert when merely imported by shared shell code).
 activatePhoneBack();
 
-// Android hardware Back, same bridge as the TV entry: the SPA keeps no page
-// history for the system to consume, so the stock activity would finish the
-// app on the first press. Layers of the phone shell register with
-// phone-back.ts; until they do (later slices), a press falls through and
-// keeps today's behaviour.
+// Android system Back (hardware button and edge-swipe gesture alike), same
+// bridge as the TV entry: the SPA keeps no page history for the system to
+// consume, so the stock activity would finish the app on the first press.
+// Layers of the phone shell register with phone-back.ts and the shell's own
+// fallback walks home / shows the exit confirm at the root, so the chain
+// consumes every press today; the decline path below is the bridge's
+// documented contract in case a layer ever lets one through.
+//
+// Registering this listener takes over the default behaviour natively: the
+// press no longer closes the app on its own. On the build-#19 device test
+// the gesture then did nothing at all — no in-app back, no exit — i.e. the
+// press was consumed natively but never reached the chain, and the old
+// .catch(() => {}) hid any registration failure. Two defences now: the
+// failure is logged instead of swallowed, and the shell arms a second,
+// independent delivery channel (a WebView-history sentinel in
+// phone-back.ts) that routes a system Back routed to webview history into
+// the same chain. dispatchPhoneBack dedupes a press both channels deliver.
 if (isAndroid()) {
-  void onBackButtonPress(() => {
-    runPhoneBack();
-  }).catch(() => {});
+  void onBackButtonPress(({ canGoBack }) => {
+    if (dispatchPhoneBack()) return;
+    if (canGoBack) {
+      window.history.back();
+      return;
+    }
+    closeAppWindow();
+  }).catch((err) => {
+    console.error("[harbor] phone back bridge failed to register", err);
+  });
 }
 
 async function mount() {
