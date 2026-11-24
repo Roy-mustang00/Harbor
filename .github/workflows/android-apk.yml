@@ -42,6 +42,10 @@ jobs:
           SDKMANAGER=$(command -v sdkmanager || echo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager")
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" "ndk;27.2.12479018"
+          for d in "$ANDROID_HOME"/ndk/*/; do
+            if [ "$d" != "$ANDROID_HOME/ndk/27.2.12479018/" ]; then sudo rm -rf "$d"; fi
+          done
+          ls "$ANDROID_HOME/ndk"
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
