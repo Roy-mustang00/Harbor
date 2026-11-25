@@ -1,9 +1,13 @@
-import { Check, X } from "lucide-react";
+import { Check, Lock, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { RemoteProfile } from "@/lib/remote/protocol";
 import { useT } from "@/lib/i18n";
+import { useProfiles } from "@/lib/profiles";
+import { isProfileLocked } from "@/lib/profile-sync/profile-lock";
+import { verifyProfilePassword } from "@/lib/profile-password";
 import { useMobileRemote } from "./mobile-remote";
 import { isPhoneBackActive, pushPhoneBack } from "./phone-back";
+import { PinSheet } from "./phone-pin";
 
 type TileState = "idle" | "chosen" | "dimmed";
 
@@ -29,14 +33,32 @@ const SWITCH_CSS = `
 }
 `;
 
-export function MobileWhosWatching({ onClose }: { onClose: () => void }) {
+export function MobileWhosWatching({
+  onClose,
+  standalone = false,
+  onManageProfiles,
+}: {
+  onClose: () => void;
+  /** Standalone phone app: profiles are local, so PIN-locked profiles can
+   *  be unlocked here and the manager can be opened. Web-remote habitat
+   *  leaves both off — the host owns its profiles. */
+  standalone?: boolean;
+  onManageProfiles?: () => void;
+}) {
   const t = useT();
   const { snapshot, sendCommand } = useMobileRemote();
+  const {
+    profiles: localProfiles,
+    activeId: localActiveId,
+    selectProfile,
+    sessionUnlockedIds,
+  } = useProfiles();
   const profiles = snapshot.profiles;
   const activeId = snapshot.profile?.id ?? null;
   const [reduced] = useState(prefersReducedMotion);
   const [selectingId, setSelectingId] = useState<string | null>(null);
   const [exiting, setExiting] = useState(false);
+  const [unlockId, setUnlockId] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
 
   useEffect(() => () => timers.current.forEach((id) => window.clearTimeout(id)), []);
@@ -56,6 +78,17 @@ export function MobileWhosWatching({ onClose }: { onClose: () => void }) {
 
   const choose = (id: string) => {
     if (selectingId) return;
+    // Standalone only: a PIN-locked profile asks for its PIN first. The
+    // provider's selectProfile fails closed on locked profiles, so without
+    // this prompt the tap silently did nothing and the profile could never
+    // be entered from the phone.
+    if (standalone && id !== localActiveId) {
+      const target = localProfiles.find((p) => p.id === id);
+      if (isProfileLocked(target) && !sessionUnlockedIds.has(id)) {
+        setUnlockId(id);
+        return;
+      }
+    }
     const commit = () => {
       if (id !== activeId) sendCommand({ action: "setProfile", id });
       onClose();
@@ -127,6 +160,12 @@ export function MobileWhosWatching({ onClose }: { onClose: () => void }) {
                   key={p.id ?? i}
                   profile={p}
                   active={!!p.id && p.id === activeId}
+                  locked={
+                    standalone &&
+                    !!p.id &&
+                    isProfileLocked(localProfiles.find((lp) => lp.id === p.id)) &&
+                    !sessionUnlockedIds.has(p.id)
+                  }
                   state={state}
                   reduced={reduced}
                   delay={110 + Math.min(i, 9) * 52}
@@ -135,8 +174,39 @@ export function MobileWhosWatching({ onClose }: { onClose: () => void }) {
               );
             })}
           </div>
+
+          {standalone && onManageProfiles && (
+            <button
+              type="button"
+              onClick={onManageProfiles}
+              className="mt-10 text-[14.5px] font-semibold text-accent transition-transform active:scale-[0.97]"
+            >
+              {t("Manage profiles")}
+            </button>
+          )}
         </div>
       </div>
+
+      {unlockId &&
+        (() => {
+          const target = localProfiles.find((p) => p.id === unlockId);
+          if (!target?.passwordHash) return null;
+          const targetHash = target.passwordHash;
+          return (
+            <PinSheet
+              title={t("Enter {name}'s PIN", { name: target.name })}
+              subtitle={t("Profile is locked. Enter the 4-digit PIN to continue.")}
+              mode="verify"
+              verify={(pin) => verifyProfilePassword(pin, targetHash)}
+              onComplete={() => {
+                selectProfile(unlockId, { unlocked: true });
+                setUnlockId(null);
+                onClose();
+              }}
+              onCancel={() => setUnlockId(null)}
+            />
+          );
+        })()}
     </div>
   );
 }
@@ -144,6 +214,7 @@ export function MobileWhosWatching({ onClose }: { onClose: () => void }) {
 function ProfileTile({
   profile,
   active,
+  locked,
   state,
   reduced,
   delay,
@@ -151,6 +222,7 @@ function ProfileTile({
 }: {
   profile: RemoteProfile;
   active: boolean;
+  locked?: boolean;
   state: TileState;
   reduced: boolean;
   delay: number;
@@ -207,6 +279,14 @@ function ProfileTile({
             className="pointer-events-none absolute -bottom-0.5 -end-0.5 flex h-[26px] w-[26px] items-center justify-center rounded-full bg-accent text-canvas shadow-md ring-2 ring-canvas"
           >
             <Check size={14} strokeWidth={3} />
+          </span>
+        )}
+        {locked && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -top-0.5 -end-0.5 flex h-[24px] w-[24px] items-center justify-center rounded-full bg-elevated text-ink-muted shadow-md ring-2 ring-canvas"
+          >
+            <Lock size={12} strokeWidth={2.4} />
           </span>
         )}
       </span>

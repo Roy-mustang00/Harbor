@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   ArrowLeft,
+  Archive,
   Blocks,
   Captions,
   Download,
@@ -16,7 +17,11 @@ import {
   KeyRound,
   Languages,
   LayoutGrid,
+  Palette,
   Play,
+  Radio,
+  Server,
+  ShieldCheck,
   SlidersHorizontal,
   Trash2,
   Wrench,
@@ -39,7 +44,18 @@ import {
   type BpControl,
 } from "@/views/big-picture/bp-settings-catalog";
 import { useBpSettingsWriter } from "@/views/big-picture/bp-settings-commit";
+import { getThemeById } from "@/lib/theme";
 import { isPhoneBackActive, pushPhoneBack } from "./phone-back";
+import {
+  AppearanceSection,
+  BackupSection,
+  HomeDepthSection,
+  MediaServersSection,
+  ParentalSection,
+  PlaybackDepthSections,
+  RelaySection,
+  SubtitleDepthSections,
+} from "./phone-settings-more";
 import {
   AccountKeysSection,
   AddonsSection,
@@ -79,6 +95,11 @@ type SettingsView =
   | { kind: "storage" }
   | { kind: "torrent" }
   | { kind: "diagnostics" }
+  | { kind: "appearance" }
+  | { kind: "parental" }
+  | { kind: "backup" }
+  | { kind: "relay" }
+  | { kind: "servers" }
   | { kind: "live" };
 
 const CAT_ICONS: Record<BpCatId, ReactNode> = {
@@ -145,7 +166,17 @@ export function PhoneSettings({ onClose }: { onClose: () => void }) {
                 ? t("Torrent engine")
                 : view.kind === "diagnostics"
                   ? t("Diagnostics")
-                  : t("Live TV playlists");
+                  : view.kind === "appearance"
+                    ? t("Appearance")
+                    : view.kind === "parental"
+                      ? t("Parental controls")
+                      : view.kind === "backup"
+                        ? t("Backup & restore")
+                        : view.kind === "relay"
+                          ? t("Relay")
+                          : view.kind === "servers"
+                            ? t("Home servers")
+                            : t("Live TV playlists");
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-canvas">
@@ -211,6 +242,44 @@ export function PhoneSettings({ onClose }: { onClose: () => void }) {
                   label={t("Diagnostics")}
                   onClick={() => setView({ kind: "diagnostics" })}
                 />
+                <GroupDivider />
+                <NavRow
+                  icon={<ShieldCheck size={20} strokeWidth={2} />}
+                  label={t("Parental controls")}
+                  onClick={() => setView({ kind: "parental" })}
+                />
+                <GroupDivider />
+                <NavRow
+                  icon={<Archive size={20} strokeWidth={2} />}
+                  label={t("Backup & restore")}
+                  onClick={() => setView({ kind: "backup" })}
+                />
+                <GroupDivider />
+                <NavRow
+                  icon={<Radio size={20} strokeWidth={2} />}
+                  label={t("Relay")}
+                  detail={settings.togetherRelayUrl ? settings.togetherRelayUrl : t("Not set")}
+                  onClick={() => setView({ kind: "relay" })}
+                />
+                <GroupDivider />
+                <NavRow
+                  icon={<Server size={20} strokeWidth={2} />}
+                  label={t("Home servers")}
+                  onClick={() => setView({ kind: "servers" })}
+                />
+              </SettingsGroup>
+
+              <SettingsGroup title={t("Appearance")}>
+                <NavRow
+                  icon={<Palette size={20} strokeWidth={2} />}
+                  label={t("Theme & appearance")}
+                  detail={
+                    settings.theme.preset === "custom"
+                      ? t("Custom colors")
+                      : (getThemeById(settings.theme.preset)?.name ?? settings.theme.preset)
+                  }
+                  onClick={() => setView({ kind: "appearance" })}
+                />
               </SettingsGroup>
 
               <SettingsGroup title={t("Preferences")}>
@@ -230,20 +299,25 @@ export function PhoneSettings({ onClose }: { onClose: () => void }) {
           )}
 
           {view.kind === "catalog" && (
-            <CatalogControls
-              controls={bpSettingsControls(
-                view.id,
-                settings,
-                t,
-                overscan,
-                consent.status !== "declined",
-              )}
-              commit={commit}
-              connected={connected}
-              onPush={(pane) =>
-                setView(pane === "connect" ? { kind: "account" } : { kind: "live" })
-              }
-            />
+            <>
+              <CatalogControls
+                controls={bpSettingsControls(
+                  view.id,
+                  settings,
+                  t,
+                  overscan,
+                  consent.status !== "declined",
+                )}
+                commit={commit}
+                connected={connected}
+                onPush={(pane) =>
+                  setView(pane === "connect" ? { kind: "account" } : { kind: "live" })
+                }
+              />
+              {view.id === "subtitles" && <SubtitleDepthSections />}
+              {view.id === "playback" && <PlaybackDepthSections />}
+              {view.id === "home" && <HomeDepthSection />}
+            </>
           )}
 
           {view.kind === "account" && <AccountKeysSection />}
@@ -251,6 +325,11 @@ export function PhoneSettings({ onClose }: { onClose: () => void }) {
           {view.kind === "storage" && <StorageSection />}
           {view.kind === "torrent" && <TorrentSection />}
           {view.kind === "diagnostics" && <DiagnosticsSection />}
+          {view.kind === "appearance" && <AppearanceSection />}
+          {view.kind === "parental" && <ParentalSection />}
+          {view.kind === "backup" && <BackupSection />}
+          {view.kind === "relay" && <RelaySection />}
+          {view.kind === "servers" && <MediaServersSection />}
           {view.kind === "live" && <LivePlaylistsView />}
         </div>
       </div>

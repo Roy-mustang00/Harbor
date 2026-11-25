@@ -42,24 +42,12 @@ import {
   type EngineStatus,
   type SelfTestResult,
 } from "@/lib/torrent/local-engine";
-import {
-  getSession as getAnilistSession,
-  isAuthenticated as isAnilistAuthenticated,
-  subscribeSession as subscribeAnilistSession,
-} from "@/lib/anilist/session";
-import {
-  getSession as getMalSession,
-  isAuthenticated as isMalAuthenticated,
-  subscribeSession as subscribeMalSession,
-} from "@/lib/mal/session";
-import {
-  getSession as getSimklSession,
-  subscribeSession as subscribeSimklSession,
-} from "@/lib/simkl/session";
-import {
-  getSession as getTraktSession,
-  subscribeSession as subscribeTraktSession,
-} from "@/lib/trakt/session";
+import { useAnilist } from "@/lib/anilist/provider";
+import { useMal } from "@/lib/mal/provider";
+import { useSimkl } from "@/lib/simkl/provider";
+import { useLetterboxd } from "@/lib/stremboxd/provider";
+import { useTrakt } from "@/lib/trakt/provider";
+import { openUrl } from "@/lib/window";
 
 // Stage 2 slice 4, phase B: the "general" sections the Big Picture settings
 // catalog deliberately does not carry (account & keys, addons, downloads &
@@ -319,38 +307,10 @@ export function KeyField({
 /* Account & API keys                                                  */
 /* ------------------------------------------------------------------ */
 
-// Tracker sign-in state read from the same module session stores the local
-// provider mirrors (local-remote.tsx). The desktop connect flows are OAuth
-// device dances with their own panels; slice 4 surfaces status only.
-function useTrackerStatus() {
-  const { authKey } = useAuth();
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const bump = () => setTick((n) => n + 1);
-    const unsubs = [
-      subscribeTraktSession(bump),
-      subscribeSimklSession(bump),
-      subscribeAnilistSession(bump),
-      subscribeMalSession(bump),
-    ];
-    return () => {
-      for (const u of unsubs) u();
-    };
-  }, []);
-  return {
-    trakt: !!getTraktSession(),
-    simkl: !!getSimklSession(),
-    anilist: !!getAnilistSession() && isAnilistAuthenticated(),
-    mal: !!getMalSession() && isMalAuthenticated(),
-    stremio: !!authKey,
-  };
-}
-
 export function AccountKeysSection() {
   const t = useT();
   const { user, signIn, signInWithKey, signOut } = useAuth();
   const { settings, update } = useSettings();
-  const trackers = useTrackerStatus();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authKeyDraft, setAuthKeyDraft] = useState("");
@@ -368,10 +328,6 @@ export function AccountKeysSection() {
       setBusy(false);
     }
   };
-
-  const trackerRow = (label: string, on: boolean) => (
-    <ValueRow key={label} label={label} value={on ? t("Connected") : t("Not connected")} />
-  );
 
   return (
     <>
@@ -510,18 +466,7 @@ export function AccountKeysSection() {
         />
       </SettingsGroup>
 
-      <SettingsGroup
-        title={t("Trackers")}
-        footer={t("Tracker sign-in is not available in the phone app yet.")}
-      >
-        {trackerRow("Trakt", trackers.trakt)}
-        <GroupDivider />
-        {trackerRow("Simkl", trackers.simkl)}
-        <GroupDivider />
-        {trackerRow("AniList", trackers.anilist)}
-        <GroupDivider />
-        {trackerRow("MyAnimeList", trackers.mal)}
-      </SettingsGroup>
+      <TrackersSection />
     </>
   );
 }
@@ -1065,5 +1010,346 @@ export function DiagnosticsSection() {
         )}
       </SettingsGroup>
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Trackers — connect flows                                            */
+/* ------------------------------------------------------------------ */
+
+// The tracker providers are all mounted in the phone entry
+// (main-phone.tsx) and their connect flows are shared with the desktop
+// panels: Trakt/Simkl are device-code dances, AniList/MAL open an
+// authorize URL and take a pasted code, Letterboxd (Stremboxd) signs in
+// with username/password (+ TOTP). These rows drive those same provider
+// hooks — no parallel auth state.
+
+function DeviceCodeBlock({ code, url }: { code: string; url: string }) {
+  const t = useT();
+  return (
+    <div className="flex flex-col items-center gap-2 px-4 py-3.5">
+      <span className="text-center text-[13px] leading-relaxed text-ink-subtle">
+        {t("Go to {url} and enter this code:", { url })}
+      </span>
+      <span className="text-[26px] font-bold tracking-[0.2em] text-ink">{code}</span>
+      <button
+        type="button"
+        onClick={() => openUrl(url)}
+        className="flex h-10 items-center justify-center rounded-full bg-ink px-5 text-[14px] font-semibold text-canvas transition-transform active:scale-[0.97]"
+      >
+        {t("Open")}
+      </button>
+    </div>
+  );
+}
+
+function TraktTracker() {
+  const t = useT();
+  const { isConnected, username, connectState, beginConnect, cancelConnect, disconnect } =
+    useTrakt();
+  return (
+    <div className="flex flex-col">
+      <ValueRow
+        label="Trakt"
+        value={isConnected ? (username ?? t("Connected")) : t("Not connected")}
+      />
+      {isConnected ? (
+        <ValueRow label={t("Disconnect")} danger onClick={disconnect} />
+      ) : connectState.kind === "awaiting" ? (
+        <>
+          <DeviceCodeBlock
+            code={connectState.device.userCode}
+            url={connectState.device.verificationUrl}
+          />
+          <ValueRow label={t("Cancel")} onClick={cancelConnect} />
+        </>
+      ) : connectState.kind === "starting" ? (
+        <ValueRow label={t("Working…")} />
+      ) : (
+        <>
+          {connectState.kind === "error" && (
+            <p className="px-4 pb-1 text-[13px] text-danger">{connectState.message}</p>
+          )}
+          {connectState.kind === "expired" && (
+            <p className="px-4 pb-1 text-[13px] text-danger">
+              {t("The code expired. Try again.")}
+            </p>
+          )}
+          {connectState.kind === "denied" && (
+            <p className="px-4 pb-1 text-[13px] text-danger">
+              {t("The sign-in was denied.")}
+            </p>
+          )}
+          <ValueRow label={t("Connect")} onClick={() => void beginConnect()} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function SimklTracker() {
+  const t = useT();
+  const { isConnected, username, connectState, beginConnect, cancelConnect, disconnect } =
+    useSimkl();
+  return (
+    <div className="flex flex-col">
+      <ValueRow
+        label="Simkl"
+        value={isConnected ? (username ?? t("Connected")) : t("Not connected")}
+      />
+      {isConnected ? (
+        <ValueRow label={t("Disconnect")} danger onClick={disconnect} />
+      ) : connectState.kind === "awaiting" ? (
+        <>
+          <DeviceCodeBlock
+            code={connectState.pin.userCode}
+            url={connectState.pin.verificationUrl}
+          />
+          <ValueRow label={t("Cancel")} onClick={cancelConnect} />
+        </>
+      ) : connectState.kind === "starting" ? (
+        <ValueRow label={t("Working…")} />
+      ) : (
+        <>
+          {connectState.kind === "error" && (
+            <p className="px-4 pb-1 text-[13px] text-danger">{connectState.message}</p>
+          )}
+          {connectState.kind === "expired" && (
+            <p className="px-4 pb-1 text-[13px] text-danger">
+              {t("The code expired. Try again.")}
+            </p>
+          )}
+          <ValueRow label={t("Connect")} onClick={() => void beginConnect()} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function CodePasteTracker({
+  name,
+  isConnected,
+  userName,
+  connectState,
+  beginConnect,
+  submitCode,
+  cancelConnect,
+  disconnect,
+  autoSync,
+  onAutoSync,
+}: {
+  name: string;
+  isConnected: boolean;
+  userName: string | null;
+  connectState:
+    | { kind: "idle" }
+    | { kind: "needs-code" }
+    | { kind: "verifying" }
+    | { kind: "error"; message: string }
+    | { kind: "success" };
+  beginConnect: () => void;
+  submitCode: (code: string) => void;
+  cancelConnect: () => void;
+  disconnect: () => void;
+  autoSync: boolean;
+  onAutoSync: (v: boolean) => void;
+}) {
+  const t = useT();
+  const [code, setCode] = useState("");
+  return (
+    <div className="flex flex-col">
+      <ValueRow
+        label={name}
+        value={isConnected ? (userName ?? t("Connected")) : t("Not connected")}
+      />
+      {isConnected ? (
+        <>
+          <ToggleRow label={t("Auto-sync")} on={autoSync} onChange={onAutoSync} />
+          <ValueRow label={t("Disconnect")} danger onClick={disconnect} />
+        </>
+      ) : connectState.kind === "needs-code" ? (
+        <div className="flex flex-col gap-2.5 px-4 py-3.5">
+          <span className="text-[13px] leading-relaxed text-ink-subtle">
+            {t("Approve in the browser, then paste the code you were given.")}
+          </span>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder={t("Code")}
+            autoCapitalize="none"
+            autoCorrect="off"
+            className={INPUT_SKIN}
+          />
+          <span className="flex gap-2.5">
+            <button
+              type="button"
+              onClick={cancelConnect}
+              className="flex h-11 flex-1 items-center justify-center rounded-full border border-edge-soft bg-surface text-[14.5px] font-semibold text-ink transition-transform active:scale-[0.98]"
+            >
+              {t("Cancel")}
+            </button>
+            <button
+              type="button"
+              disabled={!code.trim()}
+              onClick={() => submitCode(code.trim())}
+              className="flex h-11 flex-1 items-center justify-center rounded-full bg-ink text-[14.5px] font-semibold text-canvas transition-transform active:scale-[0.98] disabled:opacity-40"
+            >
+              {t("Submit code")}
+            </button>
+          </span>
+        </div>
+      ) : connectState.kind === "verifying" ? (
+        <ValueRow label={t("Working…")} />
+      ) : (
+        <>
+          {connectState.kind === "error" && (
+            <p className="px-4 pb-1 text-[13px] text-danger">{connectState.message}</p>
+          )}
+          <ValueRow label={t("Connect")} onClick={beginConnect} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function AnilistTracker() {
+  const { settings, update } = useSettings();
+  const anilist = useAnilist();
+  return (
+    <CodePasteTracker
+      name="AniList"
+      isConnected={anilist.isConnected}
+      userName={anilist.userName}
+      connectState={anilist.connectState}
+      beginConnect={anilist.beginConnect}
+      submitCode={anilist.submitCode}
+      cancelConnect={anilist.cancelConnect}
+      disconnect={anilist.disconnect}
+      autoSync={settings.anilistAutoSync}
+      onAutoSync={(v) => update({ anilistAutoSync: v })}
+    />
+  );
+}
+
+function MalTracker() {
+  const { settings, update } = useSettings();
+  const mal = useMal();
+  return (
+    <CodePasteTracker
+      name="MyAnimeList"
+      isConnected={mal.isConnected}
+      userName={mal.userName}
+      connectState={mal.connectState}
+      beginConnect={mal.beginConnect}
+      submitCode={mal.submitCode}
+      cancelConnect={mal.cancelConnect}
+      disconnect={mal.disconnect}
+      autoSync={settings.malAutoSync}
+      onAutoSync={(v) => update({ malAutoSync: v })}
+    />
+  );
+}
+
+function LetterboxdTracker() {
+  const t = useT();
+  const { session, isFullConnected, username, login, disconnect } = useLetterboxd();
+  const [user, setUser] = useState("");
+  const [password, setPassword] = useState("");
+  const [totp, setTotp] = useState("");
+  const [needsTotp, setNeedsTotp] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const connected = isFullConnected || !!session;
+
+  const doLogin = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await login(
+        user.trim(),
+        password,
+        needsTotp && totp.trim() ? totp.trim() : undefined,
+      );
+      if (res.kind === "2fa") setNeedsTotp(true);
+      else if (res.kind === "error") setError(res.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col">
+      <ValueRow
+        label="Letterboxd"
+        value={connected ? (username || t("Connected")) : t("Not connected")}
+      />
+      {connected ? (
+        <ValueRow label={t("Disconnect")} danger onClick={disconnect} />
+      ) : (
+        <div className="flex flex-col gap-2.5 px-4 py-3.5">
+          <input
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+            placeholder={t("Username")}
+            autoCapitalize="none"
+            autoCorrect="off"
+            className={INPUT_SKIN}
+          />
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={t("Password")}
+            type="password"
+            className={INPUT_SKIN}
+          />
+          {needsTotp && (
+            <input
+              value={totp}
+              onChange={(e) => setTotp(e.target.value)}
+              placeholder={t("Two-factor code")}
+              inputMode="numeric"
+              autoCapitalize="none"
+              autoCorrect="off"
+              className={INPUT_SKIN}
+            />
+          )}
+          {error && (
+            <p role="alert" className="text-[13px] text-danger">
+              {error}
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={busy || !user.trim() || !password}
+            onClick={() => void doLogin()}
+            className="flex h-11 items-center justify-center rounded-full bg-ink text-[14.5px] font-semibold text-canvas transition-transform active:scale-[0.98] disabled:opacity-40"
+          >
+            {busy ? t("Working…") : t("Sign in")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrackersSection() {
+  const t = useT();
+  return (
+    <SettingsGroup
+      title={t("Trackers")}
+      footer={t(
+        "Sign-ins use the same flows as the desktop app. Letterboxd public catalogs are configured on desktop.",
+      )}
+    >
+      <TraktTracker />
+      <GroupDivider />
+      <SimklTracker />
+      <GroupDivider />
+      <AnilistTracker />
+      <GroupDivider />
+      <MalTracker />
+      <GroupDivider />
+      <LetterboxdTracker />
+    </SettingsGroup>
   );
 }

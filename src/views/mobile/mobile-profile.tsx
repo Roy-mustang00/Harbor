@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Check,
   ChevronRight,
   FileText,
@@ -8,7 +9,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
-import { Suspense, lazy, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { useProfiles } from "@/lib/profiles";
 import { useT } from "@/lib/i18n";
@@ -17,6 +18,7 @@ import { useMobileRemote } from "./mobile-remote";
 import { setMobileRemoteStyle, useMobileRemoteStyle, type MobileRemoteStyle } from "./remote-style";
 import { HARBOR_BUGS_BASE } from "@/lib/config/endpoints";
 import { openUrl } from "@/lib/window";
+import { isPhoneBackActive, pushPhoneBack } from "./phone-back";
 
 // Lazy on purpose: the settings screen's graph (BP settings catalog, addon
 // store, downloads store, torrent engine client) loads only when a
@@ -24,6 +26,19 @@ import { openUrl } from "@/lib/window";
 // web-remote bundle stay exactly as they were.
 const PhoneSettings = lazy(() =>
   import("./phone-settings").then((m) => ({ default: m.PhoneSettings })),
+);
+
+const PhoneProfileManager = lazy(() =>
+  import("./phone-profiles").then((m) => ({ default: m.PhoneProfileManager })),
+);
+
+// The desktop settings' Licenses panel is the app's legal surface
+// (acknowledgements, built-on credits, licence texts, independence
+// notice). Lazy so its asset graph loads only when the row is opened.
+const LicensesPanel = lazy(() =>
+  import("@/views/settings/licenses-panel").then((m) => ({
+    default: m.LicensesPanel,
+  })),
 );
 
 export function MobileProfile({
@@ -44,6 +59,8 @@ export function MobileProfile({
   const color = remote?.color ?? activeProfile?.color ?? "oklch(0.78 0.13 60)";
   const [switching, setSwitching] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [legalOpen, setLegalOpen] = useState(false);
 
   return (
     <div
@@ -94,6 +111,12 @@ export function MobileProfile({
         {standalone && (
           <>
             <Row
+              icon={<Users size={20} strokeWidth={2} />}
+              label={t("Manage profiles")}
+              onClick={() => setManaging(true)}
+            />
+            <Divider />
+            <Row
               icon={<Settings size={20} strokeWidth={2} />}
               label={t("Settings")}
               onClick={() => setSettingsOpen(true)}
@@ -117,7 +140,11 @@ export function MobileProfile({
           href={HARBOR_BUGS_BASE}
         />
         <Divider />
-        <Row icon={<FileText size={20} strokeWidth={2} />} label={t("Legal")} onClick={() => {}} />
+        <Row
+          icon={<FileText size={20} strokeWidth={2} />}
+          label={t("Legal")}
+          onClick={() => setLegalOpen(true)}
+        />
         {user && (
           <>
             <Divider />
@@ -131,12 +158,84 @@ export function MobileProfile({
         )}
       </section>
 
-      {switching && <MobileWhosWatching onClose={() => setSwitching(false)} />}
+      {switching && (
+        <MobileWhosWatching
+          onClose={() => setSwitching(false)}
+          standalone={standalone}
+          onManageProfiles={
+            standalone
+              ? () => {
+                  setSwitching(false);
+                  setManaging(true);
+                }
+              : undefined
+          }
+        />
+      )}
       {standalone && settingsOpen && (
         <Suspense fallback={null}>
           <PhoneSettings onClose={() => setSettingsOpen(false)} />
         </Suspense>
       )}
+      {standalone && managing && (
+        <Suspense fallback={null}>
+          <PhoneProfileManager onClose={() => setManaging(false)} />
+        </Suspense>
+      )}
+      {legalOpen && (
+        <Suspense fallback={null}>
+          <LegalSheet onClose={() => setLegalOpen(false)} />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+// Full-screen legal sheet: the same LicensesPanel the desktop settings
+// show (its styles live in index.css, which the phone entry loads).
+// Previously the Legal row's onClick was a no-op.
+function LegalSheet({ onClose }: { onClose: () => void }) {
+  const t = useT();
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!isPhoneBackActive()) return;
+    return pushPhoneBack(() => {
+      onCloseRef.current();
+      return true;
+    });
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex flex-col bg-canvas animate-fade-in">
+      <header
+        className="flex items-center gap-2 px-3 pb-1"
+        style={{
+          paddingTop: "calc(var(--harbor-safe-top, env(safe-area-inset-top, 0px)) + 10px)",
+        }}
+      >
+        <button
+          type="button"
+          aria-label={t("Back")}
+          onClick={onClose}
+          className="flex h-12 w-12 items-center justify-center rounded-full text-ink transition-colors active:bg-raised/60"
+        >
+          <ArrowLeft size={21} strokeWidth={2.2} />
+        </button>
+        <h1 className="flex-1 text-center text-[19px] font-semibold text-ink">{t("Legal")}</h1>
+        <span className="h-12 w-12" />
+      </header>
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4"
+        style={{
+          paddingBottom:
+            "calc(var(--harbor-safe-bottom, env(safe-area-inset-bottom, 0px)) + 28px)",
+        }}
+      >
+        <div className="flex flex-col gap-8">
+          <LicensesPanel />
+        </div>
+      </div>
     </div>
   );
 }
