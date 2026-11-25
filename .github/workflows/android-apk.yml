@@ -1,5 +1,9 @@
 name: Android APK (Harbor)
 
+# Builds an installable debug APK of Harbor for Android using the project's
+# own Tauri Android configuration (src-tauri/tauri.android.conf.json).
+# Trigger it manually from the Actions tab: "Android APK (Harbor)" -> Run workflow.
+
 on:
   workflow_dispatch:
 
@@ -8,6 +12,8 @@ permissions:
 
 env:
   NODE_OPTIONS: --max-old-space-size=6144
+  # Same flag the project's own CI uses: the extension compat layer is not in
+  # this repository, so the build compiles without it.
   HARBOR_CAPSTAN_OPTIONAL: "1"
 
 jobs:
@@ -42,6 +48,9 @@ jobs:
           SDKMANAGER=$(command -v sdkmanager || echo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager")
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" "ndk;27.2.12479018"
+          # Runner images preinstall newer NDKs and some tools pick the newest
+          # installed one instead of NDK_HOME (NDK 30 broke unrar_sys: lutimes).
+          # Remove every other NDK so the pinned 27.2 is the only one available.
           for d in "$ANDROID_HOME"/ndk/*/; do
             if [ "$d" != "$ANDROID_HOME/ndk/27.2.12479018/" ]; then sudo rm -rf "$d"; fi
           done
@@ -66,7 +75,7 @@ jobs:
         run: pnpm tauri android init
 
       - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64 --config src-tauri/tauri.android.conf.json
+        run: pnpm tauri android build --debug --apk --target aarch64 --config src-tauri/tauri.android.conf.json
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
