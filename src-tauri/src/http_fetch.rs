@@ -466,7 +466,6 @@ pub async fn harbor_fetch(
 ) -> Result<HarborFetchResponse, String> {
     let timeout = Duration::from_millis(args.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
     let image_generation = crate::thumb_cache::generation();
-    let _permit = acquire_fetch_permit().await?;
     run_with_deadline(timeout, harbor_fetch_inner(app, args, image_generation)).await
 }
 
@@ -475,6 +474,13 @@ async fn harbor_fetch_inner(
     args: HarborFetchArgs,
     image_generation: u64,
 ) -> Result<HarborFetchResponse, String> {
+    // The concurrency permit is acquired inside the caller's deadline (the
+    // same shape harbor_upload_inner uses). Acquiring it in harbor_fetch,
+    // before the deadline started, let a request queued behind a saturated
+    // fetch pool wait invisibly past the frontend's own deadline, which
+    // surfaced as an opaque "harbor_fetch exceeded deadline" error (seen on
+    // Stremio sign-in) instead of this command's clear timeout error.
+    let _permit = acquire_fetch_permit().await?;
     let timeout = Duration::from_millis(args.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
     let public_network_only = args.public_network_only.unwrap_or(false);
     let allow_local_network = args.allow_local_network.unwrap_or(false);
