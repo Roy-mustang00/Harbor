@@ -296,7 +296,7 @@ export type Settings = {
   discordShowPartyJoin: boolean;
   discordMusicPresence: boolean;
   discordHideMusicWhenPaused: boolean;
-  playerEngine: "auto" | "html5" | "mpv";
+  playerEngine: "auto" | "html5" | "mpv" | "exoplayer";
   /** Play in the user's own external mpv, with IPC to keep progress synced. */
   playerExternalMpv: boolean;
   /** Path to the mpv executable. If left empty then it uses mpv from PATH. */
