@@ -1,4 +1,4 @@
-import { safeFetch as fetch } from "@/lib/safe-fetch";
+import { safeFetchWithTimeout } from "@/lib/safe-fetch";
 import { readResumeEntry, readResumeSource } from "@/lib/resume";
 import { isDetectedAnime } from "./anime-detect";
 
@@ -137,12 +137,24 @@ export function isCwMember(i: LibraryItem): boolean {
   return true;
 }
 
+// api.strem.io is not a direct (WebView) host, so every API call rides the
+// Rust bridge, where the default 30 s budget proved too small on a phone:
+// sign-in hung until the frontend deadline killed it ("harbor_fetch
+// exceeded deadline") even though the reply is a few hundred bytes. These
+// are user-waiting calls, so the API client gets a 60 s bridge budget;
+// every other fetch in the app keeps the default.
+const STREMIO_API_TIMEOUT_MS = 60_000;
+
 async function call<T>(path: string, body: object): Promise<T> {
-  const res = await fetch(`${API}/${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const res = await safeFetchWithTimeout(
+    `${API}/${path}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    STREMIO_API_TIMEOUT_MS,
+  );
   const text = await res.text();
   let json: { error?: { message?: string }; result?: unknown };
   try {

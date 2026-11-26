@@ -490,20 +490,24 @@ function directAttempt(host: string, input: string, init?: RequestInit): Promise
   );
 }
 
-function tauriStringFetch(input: string, init?: RequestInit): Promise<Response> {
+function tauriStringFetch(
+  input: string,
+  init?: RequestInit,
+  timeoutMs = 30000,
+): Promise<Response> {
   const directHost = hasSensitiveRequestHeaders(init?.headers) ? null : directHostFor(input);
   if (directHost) {
     countCrossing("direct", input);
-    return withDeadline(directAttempt(directHost, input, init), init?.signal);
+    return withDeadline(directAttempt(directHost, input, init), init?.signal, timeoutMs + 5_000);
   }
   const exec = isIdempotent(init?.method)
-    ? tauriHarborFetch(input, init).catch((e: unknown) => {
+    ? tauriHarborFetch(input, init, undefined, timeoutMs).catch((e: unknown) => {
         if (isCancellation(e)) throw e;
         if (!shouldFallbackToPluginHttp(e, init)) throw e;
         return pluginHttpFetch(input, init);
       })
-    : tauriHarborFetch(input, init);
-  return withDeadline(exec, init?.signal);
+    : tauriHarborFetch(input, init, undefined, timeoutMs);
+  return withDeadline(exec, init?.signal, timeoutMs + 5_000);
 }
 
 function webStringFetch(input: string, init?: RequestInit): Promise<Response> {
@@ -534,6 +538,31 @@ export const safeFetch: typeof fetch = (input, init) => {
     webStringFetch(request.url, request.init),
   );
 };
+
+// safeFetch with a caller-chosen bridge budget, for the few user-waiting
+// calls whose host is not a direct (WebView) host and whose small replies
+// can still be slow to arrive over the Rust bridge on a bad mobile network
+// (Stremio sign-in is the known case: the default 30 s bridge budget
+// expired before the answer came back). The frontend deadline rides 5 s
+// above the bridge budget, exactly like the default path. Non-Tauri
+// habitats keep plain safeFetch behaviour.
+export function safeFetchWithTimeout(
+  input: string | URL,
+  init: RequestInit | undefined,
+  timeoutMs: number,
+): Promise<Response> {
+  const target = urlOf(input);
+  if (isBlockedUrl(target)) {
+    noteBlocked();
+    let host = target;
+    try {
+      host = new URL(target).hostname;
+    } catch {}
+    return Promise.reject(new TrackerBlockedError(host));
+  }
+  if (!isTauri) return safeFetch(input, init);
+  return tauriStringFetch(typeof input === "string" ? input : input.href, init, timeoutMs);
+}
 
 export function safeFetchLocal(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const target = urlOf(input);
