@@ -140,8 +140,10 @@ export function usePlayerBridge(params: {
   }, [svpOn]);
   const isLiveLike = isLivePlaybackSrc(src);
   const externalMpv = externalMpvEnabled(settings);
+  // "exoplayer" is the Android native engine (phone player only); this
+  // desktop/Big Picture player has no such bridge, so it resolves as "auto".
   const chosenEngine =
-    isLiveLike && !src.notWebReady ? "html5" : autoFallbackTried ? "mpv" : settings.playerEngine;
+    isLiveLike && !src.notWebReady ? "html5" : autoFallbackTried ? "mpv" : settings.playerEngine === "exoplayer" ? "auto" : settings.playerEngine;
   const bridgeKey = `${chosenEngine}|${anime4kOn}|${embedActive}|${anime4kOn ? settings.playerAnime4kShaders.join(",") : ""}|${generalShaderKey(settings)}|${svpOn}|${svpOn ? settings.svpVpyPath : ""}|${externalMpv ? `ext:${settings.playerExternalMpvPath}:${settings.playerExternalMpvArgs}` : ""}`;
   const [bridgeReady, setBridgeReady] = useState(false);
   useEffect(() => {
