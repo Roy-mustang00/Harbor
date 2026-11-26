@@ -128,7 +128,7 @@ const CAT_ICONS: Record<BpCatId, ReactNode> = {
 export function PhoneSettings({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { user } = useAuth();
-  const { profiles, activeProfile } = useProfiles();
+  const { activeProfile } = useProfiles();
   const [profilesOpen, setProfilesOpen] = useState(false);
   // One scroll container serves the root list and every sub-view, so this
   // single reporter gives the whole settings screen tab-bar autohide (the
