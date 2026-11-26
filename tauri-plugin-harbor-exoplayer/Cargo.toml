@@ -1,5 +1,6 @@
 [package]
 name = "tauri-plugin-harbor-exoplayer"
+links = "tauri-plugin-harbor-exoplayer"
 version = "0.1.0"
 edition = "2021"
 description = "Android Media3/ExoPlayer bridge for Harbor's phone player (window.HarborExo)."
