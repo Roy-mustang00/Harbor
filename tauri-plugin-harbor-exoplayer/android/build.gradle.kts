@@ -27,6 +27,13 @@ android {
 
     kotlinOptions {
         jvmTarget = "1.8"
+        // The generated app builds this module with Kotlin Gradle Plugin
+        // 1.9.25 (tauri-cli 2.10.1 template), whose compiler cannot read the
+        // Kotlin 2.2 metadata that Media3's dependency graph pulls in via
+        // kotlin-stdlib 2.2.x ("Incompatible classes were found in
+        // dependencies" on every plugin source file). Skip the metadata
+        // version check so the 1.9 compiler accepts those classes.
+        freeCompilerArgs += "-Xskip-metadata-version-check"
     }
 }
 
@@ -37,4 +44,15 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
+}
+
+// Keep this module's Kotlin stdlib in the KGP 1.9 era (see the compiler-flag
+// note above): without this, Media3's graph resolves kotlin-stdlib to 2.2.x
+// and its 2.2 metadata breaks the 1.9.25 compiler.
+configurations.all {
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24")
+    }
 }
