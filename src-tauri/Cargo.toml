@@ -114,6 +114,7 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 harbor-core = { path = "../harbor-core" }
 harbor-install-recovery = { path = "../harbor-install-recovery" }
+tauri-plugin-harbor-exoplayer = { path = "../tauri-plugin-harbor-exoplayer" }
 librqbit = { version = "=8.1.1", default-features = false, features = ["rust-tls"] }
 url = "2"
 realfft = "3"
