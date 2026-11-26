@@ -4,6 +4,7 @@ import {
   ChevronRight,
   FileText,
   HelpCircle,
+  Lock,
   LogOut,
   MonitorSmartphone,
   Settings,
@@ -12,6 +13,8 @@ import {
 import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { useProfiles } from "@/lib/profiles";
+import { manualWatchedLibraryItems, subscribeManualWatched } from "@/lib/manual-watched";
+import { readRatings, subscribeRatings } from "@/lib/ratings/store";
 import { useT } from "@/lib/i18n";
 import { MobileWhosWatching } from "./mobile-whos-watching";
 import { useMobileRemote } from "./mobile-remote";
@@ -19,6 +22,7 @@ import { setMobileRemoteStyle, useMobileRemoteStyle, type MobileRemoteStyle } fr
 import { HARBOR_BUGS_BASE } from "@/lib/config/endpoints";
 import { openUrl } from "@/lib/window";
 import { isPhoneBackActive, pushPhoneBack } from "./phone-back";
+import { useTabBarScrollRef } from "./tab-bar-autohide";
 
 // Lazy on purpose: the settings screen's graph (BP settings catalog, addon
 // store, downloads store, torrent engine client) loads only when a
@@ -51,7 +55,7 @@ export function MobileProfile({
 }) {
   const t = useT();
   const { user, signOut } = useAuth();
-  const { activeProfile } = useProfiles();
+  const { profiles, activeProfile } = useProfiles();
   const { snapshot } = useMobileRemote();
   const remote = snapshot.profile;
   const name = remote?.name || activeProfile?.name || user?.email?.split("@")[0] || t("Guest");
@@ -61,6 +65,28 @@ export function MobileProfile({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [managing, setManaging] = useState(false);
   const [legalOpen, setLegalOpen] = useState(false);
+
+  // Local stats for the header card: on-device watched items (the manual
+  // watched store) and local ratings. Both stores are local and
+  // synchronous. The desktop profile page's server counts (friends,
+  // posts, presence) need a Harbor-account session the phone shell does
+  // not have yet, so they are deliberately not shown here.
+  const [localStats, setLocalStats] = useState({ watched: 0, ratings: 0 });
+  useEffect(() => {
+    if (!standalone) return;
+    const update = () =>
+      setLocalStats({
+        watched: manualWatchedLibraryItems().length,
+        ratings: readRatings().length,
+      });
+    update();
+    const unWatched = subscribeManualWatched(update);
+    const unRatings = subscribeRatings(update);
+    return () => {
+      unWatched();
+      unRatings();
+    };
+  }, [standalone]);
 
   return (
     <div
@@ -76,24 +102,51 @@ export function MobileProfile({
       <button
         type="button"
         onClick={() => setSwitching(true)}
-        className="flex flex-col items-center gap-3 transition-transform active:scale-[0.98]"
+        className="relative block w-full overflow-hidden rounded-3xl border border-edge-soft/70 bg-elevated/40 text-start transition-transform active:scale-[0.99]"
       >
-        <span
-          className="flex h-[84px] w-[84px] items-center justify-center overflow-hidden rounded-full text-[30px] font-bold text-white shadow-[0_10px_28px_-10px_rgba(0,0,0,0.6)]"
-          style={{ background: avatar ? undefined : color }}
-        >
-          {avatar ? (
-            <img src={avatar} alt="" className="h-full w-full object-cover" />
-          ) : (
-            name.slice(0, 1).toUpperCase()
-          )}
+        <span className="block h-[72px] w-full" style={{ background: color }}>
+          <span className="block h-full w-full bg-gradient-to-t from-black/35 via-transparent to-white/10" />
         </span>
-        <span className="text-[18px] font-semibold text-ink">{name}</span>
-        <span className="flex items-center gap-1.5 text-[13px] font-semibold text-accent">
-          <Users size={14} strokeWidth={2.4} />
-          {t("Switch profile")}
+        <span className="flex flex-col px-5 pb-4">
+          <span
+            className="-mt-9 flex h-[76px] w-[76px] items-center justify-center overflow-hidden rounded-full text-[28px] font-bold text-white shadow-[0_10px_28px_-10px_rgba(0,0,0,0.6)] ring-4 ring-canvas"
+            style={{ background: avatar ? undefined : color }}
+          >
+            {avatar ? (
+              <img src={avatar} alt="" className="h-full w-full object-cover" />
+            ) : (
+              name.slice(0, 1).toUpperCase()
+            )}
+          </span>
+          <span className="mt-2.5 text-[19px] font-semibold text-ink">{name}</span>
+          {(activeProfile?.isPrimary || activeProfile?.kid || activeProfile?.passwordHash) && (
+            <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {activeProfile?.isPrimary && <ProfileBadge label={t("Primary")} />}
+              {activeProfile?.kid && <ProfileBadge label={t("Kid")} />}
+              {activeProfile?.passwordHash && (
+                <ProfileBadge label={t("PIN")} icon={<Lock size={10} strokeWidth={2.6} />} />
+              )}
+            </span>
+          )}
+          {user?.email && (
+            <span className="mt-1 truncate text-[13px] text-ink-subtle">{user.email}</span>
+          )}
+          <span className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold text-accent">
+            <Users size={14} strokeWidth={2.4} />
+            {t("Switch profile")}
+          </span>
         </span>
       </button>
+
+      {standalone && (
+        <section className="flex overflow-hidden rounded-2xl border border-edge-soft/70 bg-elevated/40">
+          <StatCell value={localStats.watched} label={t("Watched")} />
+          <span className="my-3 w-px bg-edge-soft/60" />
+          <StatCell value={localStats.ratings} label={t("Ratings")} />
+          <span className="my-3 w-px bg-edge-soft/60" />
+          <StatCell value={profiles.length} label={t("Profiles")} />
+        </section>
+      )}
 
       {!standalone && (
         <section className="flex flex-col gap-3">
@@ -184,7 +237,7 @@ export function MobileProfile({
       )}
       {legalOpen && (
         <Suspense fallback={null}>
-          <LegalSheet onClose={() => setLegalOpen(false)} />
+          <LegalSheet onClose={() => setLegalOpen(false)} standalone={standalone} />
         </Suspense>
       )}
     </div>
@@ -194,8 +247,15 @@ export function MobileProfile({
 // Full-screen legal sheet: the same LicensesPanel the desktop settings
 // show (its styles live in index.css, which the phone entry loads).
 // Previously the Legal row's onClick was a no-op.
-function LegalSheet({ onClose }: { onClose: () => void }) {
+function LegalSheet({
+  onClose,
+  standalone = false,
+}: {
+  onClose: () => void;
+  standalone?: boolean;
+}) {
   const t = useT();
+  const scrollRef = useTabBarScrollRef(standalone);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
@@ -226,6 +286,7 @@ function LegalSheet({ onClose }: { onClose: () => void }) {
         <span className="h-12 w-12" />
       </header>
       <div
+        ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4"
         style={{
           paddingBottom:
@@ -340,4 +401,24 @@ function Row({
 
 function Divider() {
   return <span className="mx-4 block h-px bg-edge-soft/60" />;
+}
+
+function ProfileBadge({ label, icon }: { label: string; icon?: ReactNode }) {
+  return (
+    <span className="flex items-center gap-1 rounded-full bg-raised/70 px-2 py-0.5 text-[11px] font-semibold text-ink-muted">
+      {icon}
+      {label}
+    </span>
+  );
+}
+
+function StatCell({ value, label }: { value: number; label: string }) {
+  return (
+    <span className="flex flex-1 flex-col items-center gap-0.5 py-3.5">
+      <span className="text-[17px] font-semibold text-ink">{value}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-subtle">
+        {label}
+      </span>
+    </span>
+  );
 }

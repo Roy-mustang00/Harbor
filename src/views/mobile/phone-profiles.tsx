@@ -18,6 +18,7 @@ import {
 } from "@/lib/profiles";
 import { useSettings } from "@/lib/settings";
 import { isPhoneBackActive, pushPhoneBack } from "./phone-back";
+import { useTabBarScrollRef } from "./tab-bar-autohide";
 import { PinSheet } from "./phone-pin";
 import {
   GroupDivider,
@@ -51,6 +52,7 @@ const PROMPT_INTERVALS = [
 export function PhoneProfileManager({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { profiles } = useProfiles();
+  const scrollRef = useTabBarScrollRef();
   const { settings, update } = useSettings();
   const [view, setView] = useState<ManagerView>({ kind: "list" });
 
@@ -103,6 +105,7 @@ export function PhoneProfileManager({ onClose }: { onClose: () => void }) {
       </header>
 
       <div
+        ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4"
         style={{
           paddingBottom:

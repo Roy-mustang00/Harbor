@@ -1,4 +1,6 @@
 import {
+  Suspense,
+  lazy,
   useEffect,
   useRef,
   useState,
@@ -24,10 +26,12 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Trash2,
+  Users,
   Wrench,
   Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { useProfiles } from "@/lib/profiles";
 import { useT } from "@/lib/i18n";
 import { useSettings } from "@/lib/settings";
 import {
@@ -46,6 +50,7 @@ import {
 import { useBpSettingsWriter } from "@/views/big-picture/bp-settings-commit";
 import { getThemeById } from "@/lib/theme";
 import { isPhoneBackActive, pushPhoneBack } from "./phone-back";
+import { useTabBarScrollRef } from "./tab-bar-autohide";
 import {
   AppearanceSection,
   BackupSection,
@@ -87,6 +92,13 @@ import {
 // - "action: leave" (Leave Big Picture) is not rendered: there is no Big
 //   Picture session to leave in the phone entry.
 
+// The profile manager is the same screen the Profile tab's "Manage
+// profiles" row opens; lazy so its graph loads only when a user opens it
+// from either surface.
+const PhoneProfileManager = lazy(() =>
+  import("./phone-profiles").then((m) => ({ default: m.PhoneProfileManager })),
+);
+
 type SettingsView =
   | { kind: "root" }
   | { kind: "catalog"; id: BpCatId }
@@ -116,6 +128,12 @@ const CAT_ICONS: Record<BpCatId, ReactNode> = {
 export function PhoneSettings({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { user } = useAuth();
+  const { profiles, activeProfile } = useProfiles();
+  const [profilesOpen, setProfilesOpen] = useState(false);
+  // One scroll container serves the root list and every sub-view, so this
+  // single reporter gives the whole settings screen tab-bar autohide (the
+  // bar floats above this overlay inside the tab layer's stacking context).
+  const scrollRef = useTabBarScrollRef();
   const { settings, overscan, commit } = useBpSettingsWriter();
   const consent = useSyncExternalStore(
     subscribeSportsConsent,
@@ -202,6 +220,7 @@ export function PhoneSettings({ onClose }: { onClose: () => void }) {
       </header>
 
       <div
+        ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4"
         style={{
           paddingBottom:
@@ -217,6 +236,13 @@ export function PhoneSettings({ onClose }: { onClose: () => void }) {
                   label={t("Account & API keys")}
                   detail={connected.length > 0 ? connected.join(", ") : t("Not connected")}
                   onClick={() => setView({ kind: "account" })}
+                />
+                <GroupDivider />
+                <NavRow
+                  icon={<Users size={20} strokeWidth={2} />}
+                  label={t("Profiles")}
+                  detail={activeProfile?.name}
+                  onClick={() => setProfilesOpen(true)}
                 />
                 <GroupDivider />
                 <NavRow
@@ -333,6 +359,12 @@ export function PhoneSettings({ onClose }: { onClose: () => void }) {
           {view.kind === "live" && <LivePlaylistsView />}
         </div>
       </div>
+
+      {profilesOpen && (
+        <Suspense fallback={null}>
+          <PhoneProfileManager onClose={() => setProfilesOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }

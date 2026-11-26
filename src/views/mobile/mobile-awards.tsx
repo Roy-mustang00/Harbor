@@ -10,6 +10,8 @@ import type { Meta } from "@/lib/cinemeta";
 import type { AwardType } from "@/lib/providers/wikidata";
 import { useSettings } from "@/lib/settings";
 import { useT } from "@/lib/i18n";
+import { isPhoneBackActive } from "./phone-back";
+import { useHideTabBarOnScroll } from "./tab-bar-autohide";
 
 const MOBILE_AWARDS: AwardType[] = [
   "oscar",
@@ -60,6 +62,9 @@ export function MobileAwards({
   const hasKey = !!key;
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Phone entry only: full-screen scroll surface — report to the tab-bar
+  // autohide like the other phone scroll views (flag set at entry boot).
+  useHideTabBarOnScroll(scrollRef, isPhoneBackActive());
   const targetRef = useRef(INITIAL);
   const [reduced] = useState(prefersReducedMotion);
   const [closing, setClosing] = useState(false);

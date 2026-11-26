@@ -59,6 +59,38 @@ export function useTabBarAutoHide() {
 const TOP_REVEAL_PX = 56;
 const DIRECTION_DEADZONE_PX = 6;
 
+// The one reporter implementation every scroll surface shares: the tab
+// views' containers (via useHideTabBarOnScroll) and any overlay scroll
+// container (via useTabBarScrollRef) all drive the bar through here, so the
+// direction/deadzone/top behaviour is identical everywhere. Detaching a
+// reporter always reveals the bar again.
+function attachTabBarScrollReporter(
+  el: HTMLElement,
+  setBarHidden: (hidden: boolean) => void,
+): () => void {
+  let lastTop = el.scrollTop;
+  let raf = 0;
+  const update = () => {
+    raf = 0;
+    const top = el.scrollTop;
+    const delta = top - lastTop;
+    if (top <= TOP_REVEAL_PX) setBarHidden(false);
+    else if (delta >= DIRECTION_DEADZONE_PX) setBarHidden(true);
+    else if (delta <= -DIRECTION_DEADZONE_PX) setBarHidden(false);
+    lastTop = top;
+  };
+  const onScroll = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(update);
+  };
+  el.addEventListener("scroll", onScroll, { passive: true });
+  return () => {
+    el.removeEventListener("scroll", onScroll);
+    if (raf) cancelAnimationFrame(raf);
+    setBarHidden(false);
+  };
+}
+
 export function useHideTabBarOnScroll(
   scrollRef: { current: HTMLElement | null },
   enabled: boolean,
@@ -69,26 +101,28 @@ export function useHideTabBarOnScroll(
     if (!enabled) return;
     const el = scrollRef.current;
     if (!el) return;
-    let lastTop = el.scrollTop;
-    let raf = 0;
-    const update = () => {
-      raf = 0;
-      const top = el.scrollTop;
-      const delta = top - lastTop;
-      if (top <= TOP_REVEAL_PX) setBarHidden(false);
-      else if (delta >= DIRECTION_DEADZONE_PX) setBarHidden(true);
-      else if (delta <= -DIRECTION_DEADZONE_PX) setBarHidden(false);
-      lastTop = top;
-    };
-    const onScroll = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(update);
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-      setBarHidden(false);
-    };
+    return attachTabBarScrollReporter(el, setBarHidden);
   }, [enabled, scrollRef, setBarHidden]);
+}
+
+// Callback-ref form for scroll containers that have no persistent ref of
+// their own (settings, profile manager, detail, switcher, ...): spread the
+// returned ref on the scrollable element and it reports while mounted.
+// Callers gate with `enabled` exactly like useHideTabBarOnScroll — pass the
+// shell's standalone flag (or isPhoneBackActive()) outside the phone entry
+// so the web-remote habitat keeps its always-visible bar.
+export function useTabBarScrollRef(enabled = true) {
+  const { setBarHidden } = useTabBarAutoHide();
+  const detachRef = useRef<(() => void) | null>(null);
+
+  return useCallback(
+    (el: HTMLElement | null) => {
+      detachRef.current?.();
+      detachRef.current = null;
+      if (el && enabled) {
+        detachRef.current = attachTabBarScrollReporter(el, setBarHidden);
+      }
+    },
+    [enabled, setBarHidden],
+  );
 }

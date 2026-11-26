@@ -7,6 +7,7 @@ import { isProfileLocked } from "@/lib/profile-sync/profile-lock";
 import { verifyProfilePassword } from "@/lib/profile-password";
 import { useMobileRemote } from "./mobile-remote";
 import { isPhoneBackActive, pushPhoneBack } from "./phone-back";
+import { useTabBarScrollRef } from "./tab-bar-autohide";
 import { PinSheet } from "./phone-pin";
 
 type TileState = "idle" | "chosen" | "dimmed";
@@ -46,6 +47,7 @@ export function MobileWhosWatching({
   onManageProfiles?: () => void;
 }) {
   const t = useT();
+  const scrollRef = useTabBarScrollRef(standalone);
   const { snapshot, sendCommand } = useMobileRemote();
   const {
     profiles: localProfiles,
@@ -136,7 +138,10 @@ export function MobileWhosWatching({
         </button>
       </header>
 
-      <div className="relative flex flex-1 flex-col overflow-y-auto px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        ref={scrollRef}
+        className="relative flex flex-1 flex-col overflow-y-auto px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         <div className="my-auto flex w-full flex-col items-center py-8">
           <div
             className={`mb-9 flex flex-col items-center gap-1.5 ${reduced ? "" : "harbor-step"}`}
