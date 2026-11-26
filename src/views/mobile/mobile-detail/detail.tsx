@@ -8,6 +8,7 @@ import { useT } from "@/lib/i18n";
 import { useHideAnimeMetas } from "@/lib/anime-hide";
 import { useMobileRemote } from "../mobile-remote";
 import { isPhoneBackActive, pushPhoneBack } from "../phone-back";
+import { useHideTabBarOnScroll } from "../tab-bar-autohide";
 import {
   DETAIL_CSS,
   firstEpisode,
@@ -48,6 +49,10 @@ export function MobileDetail({ meta, onClose }: { meta: Meta; onClose: () => voi
   const [closing, setClosing] = useState(false);
   const [stack, setStack] = useState<Meta[]>([meta]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Phone entry only: the detail page is a full-screen scroll surface, so
+  // it reports to the tab-bar autohide like the tab views do. The flag is
+  // set once at phone-entry boot, before any detail page can mount.
+  useHideTabBarOnScroll(scrollRef, isPhoneBackActive());
 
   useEffect(() => {
     setStack([meta]);
