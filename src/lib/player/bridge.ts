@@ -175,7 +175,7 @@ export type PlayerBridge = {
 };
 
 export type PlayerCapabilities = {
-  engine: "html5" | "mpv";
+  engine: "html5" | "mpv" | "exoplayer";
   /** Playback runs in the user's own external player window, outside Harbor. */
   external?: boolean;
   pictureInPicture: boolean;
