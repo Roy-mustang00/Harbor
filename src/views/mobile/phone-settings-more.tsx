@@ -876,6 +876,20 @@ export function PlaybackDepthSections() {
 
   return (
     <>
+      <SettingsGroup title={t("Engine")}>
+        <OptionListRow
+          label={t("Player engine")}
+          value={settings.playerEngine}
+          options={[
+            { value: "auto", label: t("Auto") },
+            { value: "html5", label: "HTML5" },
+            { value: "mpv", label: "mpv" },
+            { value: "exoplayer", label: t("ExoPlayer (native, experimental)") },
+          ]}
+          onSelect={(v) => update({ playerEngine: v as typeof settings.playerEngine })}
+        />
+      </SettingsGroup>
+
       <SettingsGroup title={t("Skipping")}>
         <ToggleRow
           label={t("Skip recaps")}
