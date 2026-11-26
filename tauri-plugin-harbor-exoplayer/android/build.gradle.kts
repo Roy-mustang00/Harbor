@@ -7,7 +7,7 @@ plugins {
 // in the stage-2 progress log): 1.11.1 is the current stable line and its
 // libraries are built against compileSdk 36, matching the generated app
 // project (tauri-cli 2.10.1 template: AGP 8.11.0, Kotlin 1.9.25).
-val media3Version = "1.11.1"
+val media3Version = "1.8.1"
 
 android {
     namespace = "app.harbor.exoplayer"
@@ -44,6 +44,17 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
+
+    // Constraints — unlike the resolutionStrategy force below — are exported
+    // in this module's published metadata, so they reach consumers of the
+    // plugin (the generated app module) and cap the stdlib version there
+    // too, where Media3's graph would otherwise raise it to 2.2.10 and break
+    // the app's Kotlin 1.9 compiler the same way it broke this module's.
+    constraints {
+        api("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
+        api("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24")
+        api("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24")
+    }
 }
 
 // Keep this module's Kotlin stdlib in the KGP 1.9 era (see the compiler-flag
