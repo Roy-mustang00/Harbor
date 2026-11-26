@@ -7,6 +7,8 @@ import { useAuth } from "@/lib/auth";
 import { useDebridClients } from "@/lib/debrid/registry";
 import { useT } from "@/lib/i18n";
 import { savePlayback } from "@/lib/playback-history";
+import type { PlayerBridge, PlayerSnapshot } from "@/lib/player/bridge";
+import { createExoPlayerBridge, probeExoPlayer } from "@/lib/player/exoplayer";
 import { useSettings } from "@/lib/settings";
 import { registerStreamProxy, unregisterStreamProxy } from "@/lib/stream-proxy";
 import { resolvePlaybackRedirect } from "@/lib/streams/playback-redirect";
@@ -37,13 +39,14 @@ type Playing = { url: string; label: string };
 // This sheet runs the same pipeline composition the play-picker hooks use —
 // addons, imdb id, stream ids, pipeline — resolves the tapped stream with
 // the same resolveStream the desktop pick handler uses (debrid, on-device
-// torrent engine, completed downloads), and plays the resulting URL in a
-// plain HTML5 <video> overlay (hls.js for HLS, like the app's own html5
-// bridge). What that honestly covers today: direct MP4/HLS and debrid or
-// torrent-engine HTTP URLs in web-playable containers. MKV and other
-// non-web containers surface a format error instead of playing — those wait
-// for the native (Kotlin) player stage, which replaces this overlay's
-// engine, not the pipeline work above it.
+// torrent engine, completed downloads), and plays the resulting URL in an
+// overlay. The overlay's engine is the HTML5 <video> element (hls.js for
+// HLS, like the app's own html5 bridge), or — when the user opts in with
+// settings.playerEngine === "exoplayer" — the native Media3 player
+// (tauri-plugin-harbor-exoplayer), which also covers MKV and the other
+// containers the web player cannot decode. What the HTML5 path honestly
+// covers today: direct MP4/HLS and debrid or torrent-engine HTTP URLs in
+// web-playable containers; its format error remains the fallback surface.
 export function LocalPlaySheet({
   request,
   onClose,
@@ -223,8 +226,21 @@ export function LocalPlaySheet({
       })
     : meta.releaseInfo || undefined;
 
+  // Stage 1: the native engine is opt-in only. "auto" flips to native-first
+  // in stage 2; until then every other engine value keeps the HTML5 overlay.
+  const nativeEngine = settings.playerEngine === "exoplayer";
+
   const sheet = (
-    <div className="fixed inset-0 z-[65] flex flex-col justify-end" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[65] flex flex-col justify-end"
+      role="dialog"
+      aria-modal="true"
+      // While the native player is open the sheet must not paint at all:
+      // the video surface sits behind the WebView and shows through only
+      // where no DOM content paints. The overlay itself is portaled to
+      // document.body, so hiding the sheet does not hide it.
+      style={playing && nativeEngine ? { visibility: "hidden" } : undefined}
+    >
       <button
         type="button"
         aria-label={t("Close")}
@@ -326,6 +342,7 @@ export function LocalPlaySheet({
           title={meta.name}
           subtitle={subtitle}
           url={playing.url}
+          engine={nativeEngine ? "exoplayer" : "html5"}
           onClose={() => setPlaying(null)}
         />
       )}
@@ -391,6 +408,153 @@ function StreamRow({
 }
 
 function LocalPlayerOverlay({
+  title,
+  subtitle,
+  url,
+  engine,
+  onClose,
+}: {
+  title: string;
+  subtitle?: string;
+  url: string;
+  engine: "html5" | "exoplayer";
+  onClose: () => void;
+}) {
+  if (engine === "exoplayer") {
+    return <NativePlayerOverlay title={title} subtitle={subtitle} url={url} onClose={onClose} />;
+  }
+  return <Html5PlayerOverlay title={title} subtitle={subtitle} url={url} onClose={onClose} />;
+}
+
+// The native (Media3) branch of the phone player, stage 1. The Kotlin
+// bridge renders into a PlayerView behind the transparent WebView, so this
+// overlay is only chrome: a title bar, tap-to-pause, a buffering spinner
+// and the error/fallback surface. The full web control layer is stage 2;
+// until then the PlayerView's own controller stays enabled natively as a
+// stopgap for seeking. If the native bridge is missing or the stream
+// errors, the surface offers the web player as a one-tap fallback instead
+// of a dead end.
+function NativePlayerOverlay({
+  title,
+  subtitle,
+  url,
+  onClose,
+}: {
+  title: string;
+  subtitle?: string;
+  url: string;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const bridgeRef = useRef<PlayerBridge | null>(null);
+  const [snap, setSnap] = useState<PlayerSnapshot | null>(null);
+  const [unavailable, setUnavailable] = useState<string | null>(null);
+  const [useWeb, setUseWeb] = useState(false);
+
+  useEffect(() => {
+    const probe = probeExoPlayer();
+    if (!probe.available) {
+      setUnavailable(probe.error ?? "The native player is not available.");
+      return;
+    }
+    const bridge = createExoPlayerBridge();
+    bridgeRef.current = bridge;
+    const off = bridge.subscribe(setSnap);
+    void bridge.load({ url, title });
+    return () => {
+      off();
+      bridge.destroy();
+      bridgeRef.current = null;
+    };
+  }, [url, title]);
+
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!isPhoneBackActive()) return;
+    return pushPhoneBack(() => {
+      closeRef.current();
+      return true;
+    });
+  }, []);
+
+  if (useWeb) {
+    return <Html5PlayerOverlay title={title} subtitle={subtitle} url={url} onClose={onClose} />;
+  }
+
+  const errored = unavailable != null || snap?.status === "error";
+  const buffering = !errored && (!snap || snap.status === "loading" || snap.buffering);
+  const paused = !errored && snap?.status === "paused";
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex flex-col">
+      <div
+        className="flex items-center gap-3 bg-gradient-to-b from-black/70 to-transparent px-4 pb-4"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)" }}
+      >
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p className="truncate text-[14.5px] font-semibold text-white">{title}</p>
+          {subtitle && <p className="text-[12px] text-white/60">{subtitle}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t("Close")}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-white transition-transform active:scale-95"
+        >
+          <X size={17} strokeWidth={2.2} />
+        </button>
+      </div>
+      <button
+        type="button"
+        aria-label={paused ? t("Play") : t("Pause")}
+        onClick={() => {
+          const bridge = bridgeRef.current;
+          if (!bridge || !snap) return;
+          if (snap.status === "paused") void bridge.play();
+          else if (snap.status === "playing") bridge.pause();
+        }}
+        className="relative flex min-h-0 flex-1 items-center justify-center"
+      >
+        {buffering && <Loader2 size={34} strokeWidth={2} className="animate-spin text-white/85" />}
+        {paused && (
+          <span className="grid h-16 w-16 place-items-center rounded-full bg-black/45 text-white">
+            <Play size={26} className="fill-current" strokeWidth={0} />
+          </span>
+        )}
+      </button>
+      {errored && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60 px-6">
+          <div className="flex max-w-[300px] flex-col items-center gap-3 text-center">
+            <AlertTriangle size={26} strokeWidth={1.8} className="text-white/70" />
+            <p className="text-[14px] leading-relaxed text-white/85">
+              {unavailable ??
+                snap?.errorMessage ??
+                t("This stream could not be played by the native player.")}
+            </p>
+            <button
+              type="button"
+              onClick={() => setUseWeb(true)}
+              className="rounded-full bg-white px-5 py-2.5 text-[13.5px] font-semibold text-black transition-transform active:scale-95"
+            >
+              {t("Try the web player")}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-1 text-[13.5px] font-medium text-white/75 transition-transform active:scale-95"
+            >
+              {t("Back to streams")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+function Html5PlayerOverlay({
   title,
   subtitle,
   url,

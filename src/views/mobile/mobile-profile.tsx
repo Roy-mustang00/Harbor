@@ -89,8 +89,13 @@ export function MobileProfile({
   }, [standalone]);
 
   return (
+    // min-h-full, not h-full: at exactly the scroll container's height the
+    // column compresses its overflow-hidden cards (their automatic minimum
+    // height is 0), clipping their last rows — the header card's Switch
+    // profile row was cut in half. Growing with the content lets the tab
+    // scroll instead.
     <div
-      className="flex h-full flex-col gap-6 px-5"
+      className="flex min-h-full flex-col gap-6 px-5"
       style={{
         paddingTop: "calc(var(--harbor-safe-top, env(safe-area-inset-top, 0px)) + 16px)",
       }}
