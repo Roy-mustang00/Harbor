@@ -86,6 +86,16 @@ html[data-mpv-embed="1"] #root {
   background: transparent;
 }
 
+/* The phone's native (Media3) player renders into a PlayerView behind the
+   transparent WebView, so while it plays, the app page must stop painting
+   entirely or the page's backdrop covers the video. NativePlayerOverlay
+   (views/mobile/local-play.tsx) toggles this class on <html> for exactly
+   its own lifetime; the overlay chrome portals to document.body, outside
+   #root, so it stays visible while the page underneath is hidden. */
+html.harbor-exo-playing #root {
+  visibility: hidden;
+}
+
 /* macOS keeps the NSWindow non-opaque so its corners can be clipped, and the
    webview background is disabled by the window's configured background colour.
    Without a painted canvas the transparent root lets the desktop show through
