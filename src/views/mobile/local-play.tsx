@@ -468,6 +468,20 @@ function NativePlayerOverlay({
     };
   }, [url, title]);
 
+  // The Kotlin bridge renders into a PlayerView behind the transparent
+  // WebView, so while the native player is up, the app page under it must
+  // stop painting entirely (index.css: html.harbor-exo-playing #root) or
+  // the detail page's backdrop covers the video; hiding only the sheet is
+  // not enough. The class comes off in cleanup — every unmount path, and
+  // the web-player fallback below — so the app can never be left invisible.
+  useEffect(() => {
+    if (useWeb) return;
+    document.documentElement.classList.add("harbor-exo-playing");
+    return () => {
+      document.documentElement.classList.remove("harbor-exo-playing");
+    };
+  }, [useWeb]);
+
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
@@ -483,7 +497,7 @@ function NativePlayerOverlay({
   }
 
   const errored = unavailable != null || snap?.status === "error";
-  const buffering = !errored && (!snap || snap.status === "loading" || snap.buffering);
+  const buffering = !errored && (!snap || snap.status === "loading" || snap.status === "ready" || snap.buffering);
   const paused = !errored && snap?.status === "paused";
 
   return createPortal(
