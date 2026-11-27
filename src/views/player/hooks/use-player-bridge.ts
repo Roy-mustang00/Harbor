@@ -6,6 +6,8 @@ import {
   type PlayerSnapshot,
 } from "@/lib/player/bridge";
 import { probeMpv } from "@/lib/player/mpv";
+import { createExoPlayerBridge, probeExoPlayer } from "@/lib/player/exoplayer";
+import { isPhoneBackActive } from "@/views/mobile/phone-back";
 import { externalMpvEnabled } from "@/lib/player/external-mpv";
 import { mergeMpvOptions } from "@/lib/player/mpv-tuning";
 import { anime4kPackComplete, repairAnime4kPack } from "@/lib/anime4k";
@@ -144,7 +146,21 @@ export function usePlayerBridge(params: {
   // desktop/Big Picture player has no such bridge, so it resolves as "auto".
   const chosenEngine =
     isLiveLike && !src.notWebReady ? "html5" : autoFallbackTried ? "mpv" : settings.playerEngine === "exoplayer" ? "auto" : settings.playerEngine;
-  const bridgeKey = `${chosenEngine}|${anime4kOn}|${embedActive}|${anime4kOn ? settings.playerAnime4kShaders.join(",") : ""}|${generalShaderKey(settings)}|${svpOn}|${svpOn ? settings.svpVpyPath : ""}|${externalMpv ? `ext:${settings.playerExternalMpvPath}:${settings.playerExternalMpvArgs}` : ""}`;
+  // Phone shell only: the native Media3 bridge (lib/player/exoplayer), the
+  // same one the phone shell's local-play sheet uses, takes over stream
+  // playback when the user selected it. The gate is the phone entry's own
+  // activation flag (main-phone.tsx arms it at boot; desktop and Big
+  // Picture never do), so outside the phone shell "exoplayer" keeps
+  // resolving as "auto" above. The live carve-out matches the other
+  // engines: a web-ready live source stays on html5. The bridge reports
+  // as "html5" to this view's engine consumers — the pickBridge precedent
+  // for the external-mpv bridge — so every mpv-only surface stays off,
+  // while the bridge's own capabilities() still reports "exoplayer".
+  const phoneNativeExo =
+    isPhoneBackActive() &&
+    settings.playerEngine === "exoplayer" &&
+    !(isLiveLike && !src.notWebReady);
+  const bridgeKey = `${chosenEngine}|${phoneNativeExo}|${anime4kOn}|${embedActive}|${anime4kOn ? settings.playerAnime4kShaders.join(",") : ""}|${generalShaderKey(settings)}|${svpOn}|${svpOn ? settings.svpVpyPath : ""}|${externalMpv ? `ext:${settings.playerExternalMpvPath}:${settings.playerExternalMpvArgs}` : ""}`;
   const [bridgeReady, setBridgeReady] = useState(false);
   useEffect(() => {
     if (svpPending || anime4kPending) return;
@@ -159,7 +175,7 @@ export function usePlayerBridge(params: {
       const getEmbedRect = () => readEmbedRect(videoMountRef.current);
       // Size manual buffer modes from the real machine, not the fallback.
       await ensureNativeMemory();
-      const { bridge: choose, engine: chosen } = await pickBridge(want, src.notWebReady === true, {
+      const { bridge: pickedBridge, engine: pickedEngine } = await pickBridge(want, src.notWebReady === true, {
         anime4k: anime4kOn,
         hdrToSdr: settings.playerHdrToSdr,
         rtxHdr: settings.playerRtxHdr && !settings.playerHdrToSdr && !svpOn,
@@ -195,6 +211,24 @@ export function usePlayerBridge(params: {
           : null,
       });
       if (cancelled) return;
+      // Phone shell + native engine selected: swap the resolved bridge for
+      // the ExoPlayer one before anything attaches. The resolved bridge was
+      // never attached, so discarding it is side-effect free; if the native
+      // probe fails the resolved bridge stays and playback is not blocked.
+      let choose = pickedBridge;
+      let chosen = pickedEngine;
+      if (phoneNativeExo) {
+        const probe = probeExoPlayer();
+        if (probe.available) {
+          choose = createExoPlayerBridge();
+          chosen = "html5";
+        } else {
+          console.warn(
+            "[harbor] native ExoPlayer requested but probe failed; using the resolved engine instead. Reason:",
+            probe.error,
+          );
+        }
+      }
       bridge = choose;
       bridge.attach(host);
       bridgeRef.current = bridge;
